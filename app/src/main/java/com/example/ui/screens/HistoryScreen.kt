@@ -2,7 +2,10 @@ package com.example.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Paint
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,7 +18,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +37,514 @@ import com.example.data.Session
 import com.example.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.absoluteValue
+
+enum class HistoryRange { DAY, WEEK, MONTH }
+
+data class ChartSegment(
+    val routineId: Long,
+    val routineName: String,
+    val durationMinutes: Float,
+    val color: Color
+)
+
+fun getRoutineColor(routineId: Long): Color {
+    val colors = listOf(
+        Color(0xFFFF6F00), // Visual Alert Orange
+        Color(0xFF0091EA), // Neon Cyan
+        Color(0xFFAA00FF), // Cyber Purple
+        Color(0xFF00C853), // Bright Green
+        Color(0xFFFFD600), // Gold
+        Color(0xFFFF3D00), // Deep Coral
+        Color(0xFF2979FF), // Electric Blue
+        Color(0xFFC51162)  // Neon Pink
+    )
+    return colors[(routineId.hashCode().absoluteValue % colors.size)]
+}
+
+@Composable
+fun InteractiveHistoryChart(
+    viewModel: MainViewModel,
+    selectedRoutineIds: Set<Long>,
+    onToggleRoutine: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val sessions by viewModel.sessions.collectAsStateWithLifecycle()
+    val allDatabaseRoutines by viewModel.routines.collectAsStateWithLifecycle()
+    var selectedRange by remember { mutableStateOf(HistoryRange.DAY) }
+
+    val filteredSessions = remember(sessions, selectedRoutineIds) {
+        sessions.filter { selectedRoutineIds.contains(it.routineId) }
+    }
+
+    // Organize dates & times securely
+    val todaySessions = remember(filteredSessions) {
+        val calNow = Calendar.getInstance()
+        val todayYear = calNow.get(Calendar.YEAR)
+        val todayDay = calNow.get(Calendar.DAY_OF_YEAR)
+        filteredSessions.filter {
+            val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+            c.get(Calendar.YEAR) == todayYear && c.get(Calendar.DAY_OF_YEAR) == todayDay
+        }
+    }
+
+    val currentWeekSessions = remember(filteredSessions) {
+        val calNow = Calendar.getInstance()
+        val currentYear = calNow.get(Calendar.YEAR)
+        val currentWeek = calNow.get(Calendar.WEEK_OF_YEAR)
+        filteredSessions.filter {
+            val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+            c.get(Calendar.YEAR) == currentYear && c.get(Calendar.WEEK_OF_YEAR) == currentWeek
+        }
+    }
+
+    val currentMonthSessions = remember(filteredSessions) {
+        val calNow = Calendar.getInstance()
+        val currentYear = calNow.get(Calendar.YEAR)
+        val currentMonth = calNow.get(Calendar.MONTH)
+        filteredSessions.filter {
+            val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+            c.get(Calendar.YEAR) == currentYear && c.get(Calendar.MONTH) == currentMonth
+        }
+    }
+
+    // Slots & segments calculation
+    val maxDays = remember { Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH) }
+    
+    val slots = remember(selectedRange, sessions, todaySessions, currentWeekSessions, currentMonthSessions) {
+        when (selectedRange) {
+            HistoryRange.DAY -> {
+                List(24) { hour ->
+                    val hourSessions = todaySessions.filter {
+                        val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+                        c.get(Calendar.HOUR_OF_DAY) == hour
+                    }
+                    hourSessions.groupBy { it.routineId }.map { (routineId, list) ->
+                        val sumMin = list.sumOf { it.recordedSeconds } / 60f
+                        val routineName = list.firstOrNull()?.routineName ?: "Routine"
+                        ChartSegment(routineId, routineName, sumMin, getRoutineColor(routineId))
+                    }
+                }
+            }
+            HistoryRange.WEEK -> {
+                List(7) { dayIdx ->
+                    val targetDayOfWeek = when (dayIdx) {
+                        0 -> Calendar.MONDAY
+                        1 -> Calendar.TUESDAY
+                        2 -> Calendar.WEDNESDAY
+                        3 -> Calendar.THURSDAY
+                        4 -> Calendar.FRIDAY
+                        5 -> Calendar.SATURDAY
+                        else -> Calendar.SUNDAY
+                    }
+                    val daySessions = currentWeekSessions.filter {
+                        val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+                        c.get(Calendar.DAY_OF_WEEK) == targetDayOfWeek
+                    }
+                    daySessions.groupBy { it.routineId }.map { (routineId, list) ->
+                        val sumMin = list.sumOf { it.recordedSeconds } / 60f
+                        val routineName = list.firstOrNull()?.routineName ?: "Routine"
+                        ChartSegment(routineId, routineName, sumMin, getRoutineColor(routineId))
+                    }
+                }
+            }
+            HistoryRange.MONTH -> {
+                List(maxDays) { dayIdx ->
+                    val dayNum = dayIdx + 1
+                    val daySessions = currentMonthSessions.filter {
+                        val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+                        c.get(Calendar.DAY_OF_MONTH) == dayNum
+                    }
+                    daySessions.groupBy { it.routineId }.map { (routineId, list) ->
+                        val sumMin = list.sumOf { it.recordedSeconds } / 60f
+                        val routineName = list.firstOrNull()?.routineName ?: "Routine"
+                        ChartSegment(routineId, routineName, sumMin, getRoutineColor(routineId))
+                    }
+                }
+            }
+        }
+    }
+
+    val totalMinutesInPeriod = remember(selectedRange, sessions, todaySessions, currentWeekSessions, currentMonthSessions) {
+        val activeSessions = when (selectedRange) {
+            HistoryRange.DAY -> todaySessions
+            HistoryRange.WEEK -> currentWeekSessions
+            HistoryRange.MONTH -> currentMonthSessions
+        }
+        activeSessions.sumOf { it.recordedSeconds } / 60
+    }
+
+    // Dynamic scale limit
+    val maxStackedMinutes = remember(slots) {
+        slots.maxOfOrNull { slot -> slot.sumOf { it.durationMinutes.toDouble() } }?.toFloat() ?: 0f
+    }
+    val yAxisMax = remember(maxStackedMinutes) {
+        if (maxStackedMinutes < 15f) 15f else ((maxStackedMinutes / 10f).toInt() + 1) * 10f
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("history_compliance_chart_card"),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF121212) // Hero deep black background card
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Segmented interactive tabs matching the Apple Health aesthetic
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF242424))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                listOf(HistoryRange.DAY, HistoryRange.WEEK, HistoryRange.MONTH).forEach { range ->
+                    val isSelected = selectedRange == range
+                    val rangeLabel = when (range) {
+                        HistoryRange.DAY -> "Day"
+                        HistoryRange.WEEK -> "Week"
+                        HistoryRange.MONTH -> "Month"
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(17.dp))
+                            .background(if (isSelected) Color(0xFF424242) else Color.Transparent)
+                            .clickable { selectedRange = range }
+                            .testTag("chart_tab_${range.name.lowercase()}"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = rangeLabel,
+                            color = if (isSelected) Color.White else Color(0xFF9E9E9E),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Text layout under filters matching reference layout
+            Text(
+                text = "TOTAL COMPLIANCE TIME",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF9E9E9E),
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = String.format("%,d", totalMinutesInPeriod),
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+                Text(
+                    text = "minutes",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF9E9E9E),
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            Text(
+                text = when (selectedRange) {
+                    HistoryRange.DAY -> "Recorded sessions for today"
+                    HistoryRange.WEEK -> "Consolidated weekly tracking"
+                    HistoryRange.MONTH -> "Historic monthly trend overview"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF757575)
+            )
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // The main visual Canvas component
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .testTag("compliance_canvas_chart")
+            ) {
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+
+                val paddingLeft = 10.dp.toPx()
+                val paddingRight = 50.dp.toPx() // space for sidebar scale lines
+                val paddingTop = 15.dp.toPx()
+                val paddingBottom = 30.dp.toPx() // space for column labels
+
+                val chartWidth = canvasWidth - paddingLeft - paddingRight
+                val chartHeight = canvasHeight - paddingTop - paddingBottom
+
+                val dashEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                val gridColor = Color(0xFF262626)
+
+                // Scaling formulas
+                val yAtValue = { value: Float ->
+                    paddingTop + chartHeight - (value / yAxisMax) * chartHeight
+                }
+
+                // Gridlines & Scale Indicators (Right Y-Axis aligned)
+                listOf(0f, yAxisMax / 2, yAxisMax).forEach { level ->
+                    val y = yAtValue(level)
+                    // Dotted line
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(paddingLeft, y),
+                        end = Offset(paddingLeft + chartWidth, y),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = dashEffect
+                    )
+
+                    // Scale texts
+                    drawContext.canvas.nativeCanvas.drawText(
+                        String.format("%.0fm", level),
+                        paddingLeft + chartWidth + 8.dp.toPx(),
+                        y + 4.dp.toPx(),
+                        Paint().apply {
+                            color = android.graphics.Color.parseColor("#757575")
+                            textSize = 10.dp.toPx()
+                            textAlign = Paint.Align.LEFT
+                            isAntiAlias = true
+                        }
+                    )
+                }
+
+                val numSlots = slots.size
+                val columnWidth = chartWidth / numSlots
+                // Scale width of elements based on quantity: narrow bars for Month, wider for Week/Day style
+                val barPercentage = if (selectedRange == HistoryRange.MONTH) 0.50f else 0.65f
+                val barWidth = columnWidth * barPercentage
+                val horizontalMargin = (columnWidth - barWidth) / 2f
+
+                // Draw Stacked Columns
+                for (i in 0 until numSlots) {
+                    val xStart = paddingLeft + (i * columnWidth) + horizontalMargin
+                    var baseMinutes = 0f
+                    val segmentList = slots[i]
+
+                    segmentList.forEach { segment ->
+                        val segStartMins = baseMinutes
+                        val segEndMins = baseMinutes + segment.durationMinutes
+
+                        val yTop = yAtValue(segEndMins)
+                        val yBottom = yAtValue(segStartMins)
+                        val barHeight = yBottom - yTop
+
+                        if (barHeight > 0.5f) {
+                            drawRoundRect(
+                                color = segment.color,
+                                topLeft = Offset(xStart, yTop),
+                                size = Size(barWidth, barHeight),
+                                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                            )
+                        }
+                        baseMinutes = segEndMins
+                    }
+                }
+
+                // Bottom Labels (Horizontal X-Axis matching reference labels)
+                val labelPaint = Paint().apply {
+                    color = android.graphics.Color.parseColor("#757575")
+                    textSize = 9.dp.toPx()
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+
+                when (selectedRange) {
+                    HistoryRange.DAY -> {
+                        val targetLabels = listOf(0, 6, 12, 18, 23)
+                        targetLabels.forEach { h ->
+                            val slotCenterX = paddingLeft + (h * columnWidth) + (columnWidth / 2f)
+                            drawContext.canvas.nativeCanvas.drawText(
+                                String.format("%02d:00", h),
+                                slotCenterX,
+                                paddingTop + chartHeight + 18.dp.toPx(),
+                                labelPaint
+                            )
+                        }
+                    }
+                    HistoryRange.WEEK -> {
+                        val labels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                        labels.forEachIndexed { idx, label ->
+                            val slotCenterX = paddingLeft + (idx * columnWidth) + (columnWidth / 2f)
+                            drawContext.canvas.nativeCanvas.drawText(
+                                label,
+                                slotCenterX,
+                                paddingTop + chartHeight + 18.dp.toPx(),
+                                labelPaint
+                            )
+                        }
+                    }
+                    HistoryRange.MONTH -> {
+                        val targetDays = listOf(1, 10, 20, 30)
+                        targetDays.forEach { d ->
+                            if (d <= numSlots) {
+                                val slotIdx = d - 1
+                                val slotCenterX = paddingLeft + (slotIdx * columnWidth) + (columnWidth / 2f)
+                                drawContext.canvas.nativeCanvas.drawText(
+                                    d.toString(),
+                                    slotCenterX,
+                                    paddingTop + chartHeight + 18.dp.toPx(),
+                                    labelPaint
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Active legends and multi-select filter controls
+            val legendRoutines = remember(allDatabaseRoutines, sessions) {
+                val dbRoutines = allDatabaseRoutines.map { it.routine.id to it.routine.name }
+                val sessionRoutines = sessions.map { it.routineId to it.routineName }
+                (dbRoutines + sessionRoutines).distinctBy { it.first }
+            }
+
+            if (legendRoutines.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(18.dp))
+                HorizontalDivider(color = Color(0xFF212121))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "SELECT ROUTINES TO FILTER CHART & LOGS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF9E9E9E),
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    legendRoutines.chunked(2).forEach { rowPair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(15.dp)
+                        ) {
+                            rowPair.forEach { (routineId, name) ->
+                                val isSelected = selectedRoutineIds.contains(routineId)
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isSelected) {
+                                                getRoutineColor(routineId).copy(alpha = 0.12f)
+                                            } else {
+                                                Color(0xFF1A1A1A)
+                                            }
+                                        )
+                                        .clickable { onToggleRoutine(routineId) }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isSelected) {
+                                                    getRoutineColor(routineId)
+                                                } else {
+                                                    Color(0xFF555555)
+                                                }
+                                            )
+                                    )
+                                    Text(
+                                        text = name,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) Color.White else Color(0xFF757575),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Active Filter",
+                                            tint = getRoutineColor(routineId),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            if (rowPair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Trends Insight card matching the Apple Health reference visual layout
+            Spacer(modifier = Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E1E1E))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = "Trends: Training Compliance",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (totalMinutesInPeriod > 0) {
+                                "The clinical compliance trend trajectory is positive. Keep maintaining active workout schedules."
+                            } else {
+                                "Trend trajectory is unavailable until sessions are clocked in this selected timeline."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF9E9E9E)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (totalMinutesInPeriod > 0) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                else Color(0xFFEF5350).copy(alpha = 0.10f)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (totalMinutesInPeriod > 0) "Optimal" else "Unavailable",
+                            color = if (totalMinutesInPeriod > 0) Color(0xFF4CAF50) else Color(0xFFEF5350),
+                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,15 +553,21 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
+    val allDatabaseRoutines by viewModel.routines.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Helper functions for calendar status
-    val todayCompleted = remember(sessions) {
-        val todayStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-        sessions.any {
-            val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date(it.startedAt))
-            it.status == "Completed" && dateStr == todayStr
-        }
+    // Gather all unique routine IDs from both database and local session history logs
+    val availableRoutineIds = remember(allDatabaseRoutines, sessions) {
+        (allDatabaseRoutines.map { it.routine.id } + sessions.map { it.routineId }).toSet()
+    }
+
+    // Default to including all available routines in stats and visualization
+    var selectedRoutineIds by remember(availableRoutineIds) {
+        mutableStateOf(availableRoutineIds)
+    }
+
+    val filteredSessions = remember(sessions, selectedRoutineIds) {
+        sessions.filter { selectedRoutineIds.contains(it.routineId) }
     }
 
     Column(
@@ -75,125 +598,19 @@ fun HistoryScreen(
                 }
             }
 
-            // --- ADHERENCE CALENDAR CHECK ---
+            // --- INLINE INTERACTIVE HISTORIC CHART ---
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth().testTag("history_adherence_calendar"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Weekly Compliance Roll",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            if (todayCompleted) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "Done Today Indicator",
-                                        tint = Color(0xFF2E7D32),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = "Today Completed",
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF2E7D32),
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    text = "Today Outstanding",
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Draw visual 7-day row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val daysOfWeek = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-                            
-                            daysOfWeek.forEachIndexed { idx, day ->
-                                val dayOfWeekTarget = when (idx) {
-                                    0 -> Calendar.MONDAY
-                                    1 -> Calendar.TUESDAY
-                                    2 -> Calendar.WEDNESDAY
-                                    3 -> Calendar.THURSDAY
-                                    4 -> Calendar.FRIDAY
-                                    5 -> Calendar.SATURDAY
-                                    else -> Calendar.SUNDAY
-                                }
-
-                                val isSpecificDayActiveCompleted = sessions.any {
-                                    val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
-                                    it.status == "Completed" && c.get(Calendar.DAY_OF_WEEK) == dayOfWeekTarget
-                                }
-
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = day,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isSpecificDayActiveCompleted) Color(0xFF2E7D32)
-                                                else MaterialTheme.colorScheme.surface
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isSpecificDayActiveCompleted) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = "Completed checkbox icon",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.3f))
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                InteractiveHistoryChart(
+                    viewModel = viewModel,
+                    selectedRoutineIds = selectedRoutineIds,
+                    onToggleRoutine = { routineId ->
+                        selectedRoutineIds = if (selectedRoutineIds.contains(routineId)) {
+                            selectedRoutineIds - routineId
+                        } else {
+                            selectedRoutineIds + routineId
                         }
                     }
-                }
+                )
             }
 
             // --- HISTORY LOG COMPLIANCE CHECKS ---
@@ -209,7 +626,7 @@ fun HistoryScreen(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text(
-                        text = "Session Drill Logs (${sessions.size})",
+                        text = "Session Drill Logs (${filteredSessions.size})",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.secondary
@@ -217,14 +634,18 @@ fun HistoryScreen(
                 }
             }
 
-            if (sessions.isEmpty()) {
+            if (filteredSessions.isEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth().testTag("empty_history_card"),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         Text(
-                            text = "No clinical therapy sessions completed yet. Initiate a timer from the Home tab to build compliance history.",
+                            text = if (sessions.isEmpty()) {
+                                "No clinical therapy sessions completed yet. Initiate a timer from the Home tab to build compliance history."
+                            } else {
+                                "No sessions match the selected routine filters. Toggle them back on to view their drill logs."
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(24.dp),
@@ -236,16 +657,28 @@ fun HistoryScreen(
                 }
             }
 
-            items(sessions, key = { it.id }) { session ->
+            items(filteredSessions, key = { it.id }) { session ->
                 val formattedDate = remember(session.startedAt) {
                     val sdf = SimpleDateFormat("MMM dd, yyyy • h:mm a", Locale.getDefault())
                     sdf.format(Date(session.startedAt))
                 }
 
+                var isExpanded by remember { mutableStateOf(false) }
+
                 Card(
-                    modifier = Modifier.fillMaxWidth().testTag("history_item_card_${session.id}"),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(CardDefaults.shape)
+                        .clickable { isExpanded = !isExpanded }
+                        .testTag("history_item_card_${session.id}"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isExpanded) {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        }
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = if (isExpanded) 4.dp else 1.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(
@@ -268,28 +701,40 @@ fun HistoryScreen(
                                 )
                             }
 
-                            // Adherence progress badge
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        when (session.status) {
-                                            "Completed" -> Color(0xFFE8F5E9)
-                                            "Partial" -> Color(0xFFFFF3E0)
-                                            else -> Color(0xFFFFEBEE)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Adherence progress badge
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            when (session.status) {
+                                                "Completed" -> Color(0xFFE8F5E9)
+                                                "Partial" -> Color(0xFFFFF3E0)
+                                                else -> Color(0xFFFFEBEE)
+                                            }
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = session.status,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = when (session.status) {
+                                            "Completed" -> Color(0xFF2E7D32)
+                                            "Partial" -> Color(0xFFEF6C00)
+                                            else -> Color(0xFFC62828)
                                         }
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = session.status,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = when (session.status) {
-                                        "Completed" -> Color(0xFF2E7D32)
-                                        "Partial" -> Color(0xFFEF6C00)
-                                        else -> Color(0xFFC62828)
-                                    }
+                                }
+
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (isExpanded) "Collapse details" else "Expand details",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
@@ -324,6 +769,118 @@ fun HistoryScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+
+                        // Detailed stage list when selected
+                        if (isExpanded) {
+                            val stageRecords by remember(session.id) {
+                                viewModel.getStageRecordsForSession(session.id)
+                            }.collectAsStateWithLifecycle(emptyList())
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "STAGE DRILL DETAILS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            if (stageRecords.isEmpty()) {
+                                Text(
+                                    text = "No detailed stage activities logged for this session.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(10.dp)
+                                ) {
+                                    stageRecords.forEach { record ->
+                                        val recMins = record.recordedSeconds / 60
+                                        val recSecs = record.recordedSeconds % 60
+                                        val targetMins = record.durationSeconds / 60
+                                        val targetSecs = record.durationSeconds % 60
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .background(
+                                                            color = when (record.status) {
+                                                                "Completed" -> Color(0xFFE8F5E9)
+                                                                "Skipped" -> Color(0xFFFFF3E0)
+                                                                else -> Color(0xFFFFEBEE)
+                                                            },
+                                                            shape = CircleShape
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = when (record.status) {
+                                                            "Completed" -> Icons.Default.Check
+                                                            "Skipped" -> Icons.Default.SkipNext
+                                                            else -> Icons.Default.Close
+                                                        },
+                                                        contentDescription = record.status,
+                                                        tint = when (record.status) {
+                                                            "Completed" -> Color(0xFF2E7D32)
+                                                            "Skipped" -> Color(0xFFEF6C00)
+                                                            else -> Color(0xFFC62828)
+                                                        },
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+
+                                                Column {
+                                                    Text(
+                                                        text = "Stage ${record.stageOrder}: ${record.stageName}",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.sp,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "Status: ${record.status}",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = "${String.format("%02d:%02d", recMins, recSecs)} / ${String.format("%02d:%02d", targetMins, targetSecs)}",
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                textAlign = TextAlign.End
+                                            )
+                                        }
+                                        if (record != stageRecords.last()) {
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f))
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))

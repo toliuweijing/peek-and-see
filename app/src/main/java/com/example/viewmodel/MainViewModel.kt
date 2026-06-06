@@ -170,6 +170,10 @@ class MainViewModel(
         TimerServiceState.trainingState.value = TrainingState.IDLE
     }
 
+    fun getStageRecordsForSession(sessionId: Long): Flow<List<StageRecord>> {
+        return repository.getStageRecordsForSession(sessionId)
+    }
+
     // --- ROUTINE MAKER ACTION WORKFLOWS ---
     fun deleteRoutine(routineId: Long) {
         viewModelScope.launch {
