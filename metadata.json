@@ -1,0 +1,6 @@
+{
+  "name": "Amblyopia Timer",
+  "description": "A reliable stage timer and adherence tracker for clinician-recommended eye exercises.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
