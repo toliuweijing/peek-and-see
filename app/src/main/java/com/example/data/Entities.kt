@@ -11,7 +11,8 @@ data class Routine(
     val name: String,
     val description: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val autoRepeat: Boolean = false
 )
 
 @Entity(tableName = "stages")

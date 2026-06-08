@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.viewmodel.MainViewModel
+import com.example.data.PatientProfile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +37,11 @@ fun ProfileScreen(
     val profileSoundPref by viewModel.profileSoundPref.collectAsStateWithLifecycle()
     val profileEyepatchPref by viewModel.profileEyepatchPref.collectAsStateWithLifecycle()
     val profileDoctorContact by viewModel.profileDoctorContact.collectAsStateWithLifecycle()
+
+    val patientProfiles by viewModel.patientProfiles.collectAsStateWithLifecycle()
+    val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
+    var showAddPatientDialog by remember { mutableStateOf(false) }
+    var profileToDelete by remember { mutableStateOf<PatientProfile?>(null) }
 
     val scrollState = rememberScrollState()
 
@@ -103,6 +111,338 @@ fun ProfileScreen(
                     )
                 }
             }
+        }
+
+        // --- FAMILY & PATIENTS PROFILES SELECTION CARD ---
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("profile_profiles_card"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Group,
+                            contentDescription = "Family/Multiple patients profiles icon",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Family & Patient Profiles",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    TextButton(
+                        onClick = { showAddPatientDialog = true },
+                        modifier = Modifier.testTag("add_patient_profile_btn"),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Patient", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    patientProfiles.forEach { p ->
+                        val isActive = p.id == activeProfileId
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    viewModel.selectActiveProfile(p.id)
+                                    saveConfirmationMessage = "Switched active profile to ${p.name}!"
+                                }
+                                .testTag("patient_profile_item_${p.id}"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isActive) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                }
+                            ),
+                            border = if (isActive) {
+                                androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                            } else {
+                                null
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = p.name,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Age: ${p.age} • ${p.sex} • ${p.eyepatchPref}",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (isActive) {
+                                        Card(
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            ),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "ACTIVE",
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 9.sp,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    if (p.id != "default") {
+                                        IconButton(
+                                            onClick = { profileToDelete = p },
+                                            modifier = Modifier.size(32.dp).testTag("delete_profile_btn_${p.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete patient profile",
+                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- ADD PATIENT DIALOG ---
+        if (showAddPatientDialog) {
+            var newName by remember { mutableStateOf("") }
+            var newAge by remember { mutableStateOf("6") }
+            var newSex by remember { mutableStateOf("Male") }
+            var newEyePatchPref by remember { mutableStateOf("Right eye patch") }
+            var newSoundPref by remember { mutableStateOf("Gentle Chime") }
+
+            AlertDialog(
+                onDismissRequest = { showAddPatientDialog = false },
+                title = {
+                    Text(
+                        text = "Register New Patient",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            label = { Text("Patient Name / Nickname") },
+                            modifier = Modifier.fillMaxWidth().testTag("add_profile_name_input"),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = newAge,
+                            onValueChange = { age ->
+                                if (age.all { it.isDigit() }) {
+                                    newAge = age
+                                }
+                            },
+                            label = { Text("Age") },
+                            modifier = Modifier.fillMaxWidth().testTag("add_profile_age_input"),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true
+                        )
+
+                        // Sex Selector Button Row
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Patient Gender/Sex",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("Male", "Female", "Other").forEach { sexOption ->
+                                    val isSelected = newSex == sexOption
+                                    Button(
+                                        onClick = { newSex = sexOption },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        modifier = Modifier.weight(1f).testTag("add_profile_sex_$sexOption"),
+                                        contentPadding = PaddingValues(vertical = 4.dp)
+                                    ) {
+                                        Text(sexOption, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Eye Patch Side Selector Choice
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Eye Patch Side Configuration:",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf("Right eye patch", "Left eye patch", "Alternating").forEach { patchOption ->
+                                    val isSelected = newEyePatchPref == patchOption
+                                    Button(
+                                        onClick = { newEyePatchPref = patchOption },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        modifier = Modifier.weight(1f).testTag("add_profile_patch_$patchOption"),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(patchOption, fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (newName.isNotBlank()) {
+                                viewModel.addProfile(
+                                    name = newName.trim(),
+                                    age = newAge.toIntOrNull() ?: 6,
+                                    sex = newSex,
+                                    soundPref = newSoundPref,
+                                    eyepatchPref = newEyePatchPref,
+                                    doctorContact = ""
+                                )
+                                showAddPatientDialog = false
+                                saveConfirmationMessage = "Added and activated profile for $newName!"
+                            }
+                        },
+                        modifier = Modifier.testTag("add_profile_confirm_btn")
+                    ) {
+                        Text("Add Profile")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showAddPatientDialog = false },
+                        modifier = Modifier.testTag("add_profile_cancel_btn")
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // --- DELETE PROFILE CONFIRMATION DIALOG ---
+        profileToDelete?.let { profile ->
+            AlertDialog(
+                onDismissRequest = { profileToDelete = null },
+                title = {
+                    Text(
+                        text = "Delete Patient Profile?",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text("Are you sure you want to permanently delete the profile for \"${profile.name}\"? This action will remove their child-specific clinical setup.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteProfile(profile.id)
+                            profileToDelete = null
+                            saveConfirmationMessage = "Profile deleted successfully!"
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.testTag("delete_profile_confirm_btn")
+                    ) {
+                        Text("Permanently Delete", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { profileToDelete = null },
+                        modifier = Modifier.testTag("delete_profile_cancel_btn")
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         // --- CLINICAL DEMOGRAPHICS SECTION ---

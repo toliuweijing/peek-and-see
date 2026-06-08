@@ -77,25 +77,48 @@ fun TrainingTimerScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        text = routine.routine.name,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = routine.routine.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 },
                 actions = {
-                    Text(
-                        text = "Stage ${currentStageIdx + 1}/${routine.stages.size}",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 16.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "${currentStageIdx + 1}/${routine.stages.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            if (routine.routine.autoRepeat) {
+                                Icon(
+                                    imageVector = Icons.Default.Replay,
+                                    contentDescription = "Auto-repeat active",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -324,13 +347,20 @@ fun TrainingTimerScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
+                                val isNotLast = (currentStageIdx + 1) < routine.stages.size
                                 Icon(
-                                    imageVector = if (currentStageIdx + 1 < routine.stages.size) Icons.Default.NavigateNext else Icons.Default.Check,
+                                    imageVector = if (isNotLast || routine.routine.autoRepeat) Icons.Default.NavigateNext else Icons.Default.Check,
                                     contentDescription = "Advance to the next clinic stage manually"
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (currentStageIdx + 1 < routine.stages.size) "Continue to Next Stage" else "Proceed to Log Summary",
+                                    text = if (isNotLast) {
+                                        "Continue to Next Stage"
+                                    } else if (routine.routine.autoRepeat) {
+                                        "Repeat Routine (Stage 1)"
+                                    } else {
+                                        "Proceed to Log Summary"
+                                    },
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 16.sp
                                 )

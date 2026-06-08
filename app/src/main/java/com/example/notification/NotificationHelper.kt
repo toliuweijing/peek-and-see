@@ -63,6 +63,19 @@ class NotificationHelper(private val context: Context) {
         )
     }
 
+    private fun getActivityPendingIntent(action: String, requestCode: Int): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            this.action = action
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     fun buildTimerNotification(
         routineName: String,
         stageName: String,
@@ -102,7 +115,7 @@ class NotificationHelper(private val context: Context) {
             TrainingState.RUNNING -> {
                 val pausePI = getServicePendingIntent("com.example.lazyeyetimer.PAUSE", 1)
                 val skipPI = getServicePendingIntent("com.example.lazyeyetimer.SKIP", 2)
-                val stopEarlyPI = getServicePendingIntent("com.example.lazyeyetimer.END_EARLY", 3)
+                val stopEarlyPI = getActivityPendingIntent("com.example.lazyeyetimer.END_EARLY", 3)
                 
                 builder.addAction(android.R.drawable.ic_media_pause, "Pause", pausePI)
                 builder.addAction(android.R.drawable.ic_media_next, "Skip", skipPI)
@@ -111,7 +124,7 @@ class NotificationHelper(private val context: Context) {
             TrainingState.PAUSED -> {
                 val resumePI = getServicePendingIntent("com.example.lazyeyetimer.RESUME", 4)
                 val skipPI = getServicePendingIntent("com.example.lazyeyetimer.SKIP", 5)
-                val stopEarlyPI = getServicePendingIntent("com.example.lazyeyetimer.END_EARLY", 6)
+                val stopEarlyPI = getActivityPendingIntent("com.example.lazyeyetimer.END_EARLY", 6)
 
                 builder.addAction(android.R.drawable.ic_media_play, "Resume", resumePI)
                 builder.addAction(android.R.drawable.ic_media_next, "Skip", skipPI)

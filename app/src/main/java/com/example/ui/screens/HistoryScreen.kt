@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -182,14 +183,18 @@ fun InteractiveHistoryChart(
         if (maxStackedMinutes < 15f) 15f else ((maxStackedMinutes / 10f).toInt() + 1) * 10f
     }
 
+    val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val axisLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f).toArgb()
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .testTag("history_compliance_chart_card"),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF121212) // Hero deep black background card
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
     ) {
         Column(
             modifier = Modifier
@@ -201,7 +206,7 @@ fun InteractiveHistoryChart(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF242424))
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -217,14 +222,17 @@ fun InteractiveHistoryChart(
                             .weight(1f)
                             .height(34.dp)
                             .clip(RoundedCornerShape(17.dp))
-                            .background(if (isSelected) Color(0xFF424242) else Color.Transparent)
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary 
+                                else Color.Transparent
+                            )
                             .clickable { selectedRange = range }
                             .testTag("chart_tab_${range.name.lowercase()}"),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = rangeLabel,
-                            color = if (isSelected) Color.White else Color(0xFF9E9E9E),
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
@@ -238,7 +246,7 @@ fun InteractiveHistoryChart(
             Text(
                 text = "TOTAL COMPLIANCE TIME",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF9E9E9E),
+                color = MaterialTheme.colorScheme.secondary,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp
             )
@@ -251,12 +259,12 @@ fun InteractiveHistoryChart(
                     text = String.format("%,d", totalMinutesInPeriod),
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Black,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "minutes",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF9E9E9E),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
             }
@@ -267,10 +275,12 @@ fun InteractiveHistoryChart(
                     HistoryRange.MONTH -> "Historic monthly trend overview"
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF757575)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
 
             Spacer(modifier = Modifier.height(22.dp))
+
+            val gridColorToken = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
 
             // The main visual Canvas component
             Canvas(
@@ -291,7 +301,6 @@ fun InteractiveHistoryChart(
                 val chartHeight = canvasHeight - paddingTop - paddingBottom
 
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                val gridColor = Color(0xFF262626)
 
                 // Scaling formulas
                 val yAtValue = { value: Float ->
@@ -303,7 +312,7 @@ fun InteractiveHistoryChart(
                     val y = yAtValue(level)
                     // Dotted line
                     drawLine(
-                        color = gridColor,
+                        color = gridColorToken,
                         start = Offset(paddingLeft, y),
                         end = Offset(paddingLeft + chartWidth, y),
                         strokeWidth = 1.dp.toPx(),
@@ -316,7 +325,7 @@ fun InteractiveHistoryChart(
                         paddingLeft + chartWidth + 8.dp.toPx(),
                         y + 4.dp.toPx(),
                         Paint().apply {
-                            color = android.graphics.Color.parseColor("#757575")
+                            color = axisLabelColor
                             textSize = 10.dp.toPx()
                             textAlign = Paint.Align.LEFT
                             isAntiAlias = true
@@ -359,7 +368,7 @@ fun InteractiveHistoryChart(
 
                 // Bottom Labels (Horizontal X-Axis matching reference labels)
                 val labelPaint = Paint().apply {
-                    color = android.graphics.Color.parseColor("#757575")
+                    color = axisLabelColor
                     textSize = 9.dp.toPx()
                     textAlign = Paint.Align.CENTER
                     isAntiAlias = true
@@ -417,12 +426,12 @@ fun InteractiveHistoryChart(
 
             if (legendRoutines.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(18.dp))
-                HorizontalDivider(color = Color(0xFF212121))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "SELECT ROUTINES TO FILTER CHART & LOGS",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF9E9E9E),
+                    color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
                 )
@@ -445,7 +454,7 @@ fun InteractiveHistoryChart(
                                             if (isSelected) {
                                                 getRoutineColor(routineId).copy(alpha = 0.12f)
                                             } else {
-                                                Color(0xFF1A1A1A)
+                                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
                                             }
                                         )
                                         .clickable { onToggleRoutine(routineId) }
@@ -461,7 +470,7 @@ fun InteractiveHistoryChart(
                                                 if (isSelected) {
                                                     getRoutineColor(routineId)
                                                 } else {
-                                                    Color(0xFF555555)
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                                 }
                                             )
                                     )
@@ -469,7 +478,7 @@ fun InteractiveHistoryChart(
                                         text = name,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (isSelected) Color.White else Color(0xFF757575),
+                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
@@ -498,7 +507,7 @@ fun InteractiveHistoryChart(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E1E1E))
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f))
                     .padding(12.dp)
             ) {
                 Row(
@@ -511,7 +520,7 @@ fun InteractiveHistoryChart(
                             text = "Trends: Training Compliance",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
@@ -521,7 +530,7 @@ fun InteractiveHistoryChart(
                                 "Trend trajectory is unavailable until sessions are clocked in this selected timeline."
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF9E9E9E)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Box(
@@ -550,6 +559,7 @@ fun InteractiveHistoryChart(
 @Composable
 fun HistoryScreen(
     viewModel: MainViewModel,
+    onNavigateToHistoryManagement: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
@@ -583,18 +593,46 @@ fun HistoryScreen(
         ) {
             // --- HEADER TITLE ---
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Clinical History Logs",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Track on-device compliance logs and export them to your child's ophthalmologist.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Clinical History Logs",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Track on-device compliance logs and export them to your child's ophthalmologist.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToHistoryManagement,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        modifier = Modifier
+                            .testTag("navigate_to_history_mgmt_btn")
+                            .padding(start = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Manage logs direct screen button",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Manage", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -711,21 +749,21 @@ fun HistoryScreen(
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(
                                             when (session.status) {
-                                                "Completed" -> Color(0xFFE8F5E9)
-                                                "Partial" -> Color(0xFFFFF3E0)
-                                                else -> Color(0xFFFFEBEE)
+                                                "Completed" -> MaterialTheme.colorScheme.primaryContainer
+                                                "Partial" -> MaterialTheme.colorScheme.secondaryContainer
+                                                else -> MaterialTheme.colorScheme.errorContainer
                                             }
                                         )
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text(
                                         text = session.status,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
                                         color = when (session.status) {
-                                            "Completed" -> Color(0xFF2E7D32)
-                                            "Partial" -> Color(0xFFEF6C00)
-                                            else -> Color(0xFFC62828)
+                                            "Completed" -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            "Partial" -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            else -> MaterialTheme.colorScheme.onErrorContainer
                                         }
                                     )
                                 }

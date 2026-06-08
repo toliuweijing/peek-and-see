@@ -34,6 +34,7 @@ fun RoutineBuilderScreen(
 
     var routineName by remember { mutableStateOf("") }
     var routineDescription by remember { mutableStateOf("") }
+    var autoRepeat by remember { mutableStateOf(false) }
     val editableStages = remember { mutableStateListOf<EditableStage>() }
     var hasInitialized by remember { mutableStateOf(false) }
 
@@ -43,6 +44,7 @@ fun RoutineBuilderScreen(
         if (targetRoutine != null) {
             routineName = targetRoutine.routine.name
             routineDescription = targetRoutine.routine.description
+            autoRepeat = targetRoutine.routine.autoRepeat
             editableStages.clear()
             targetRoutine.sortedStages.forEach { s ->
                 val mins = s.durationSeconds / 60
@@ -157,6 +159,39 @@ fun RoutineBuilderScreen(
                             .testTag("routine_desc_input"),
                         maxLines = 3
                     )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Auto-Repeat Training Loop",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Restarts automatically from Stage 1 once the final stage concludes.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = autoRepeat,
+                            onCheckedChange = { autoRepeat = it },
+                            modifier = Modifier.testTag("routine_repeat_switch")
+                        )
+                    }
                 }
             }
 
@@ -360,9 +395,9 @@ fun RoutineBuilderScreen(
                     }
 
                     if (routineId == null || routineId == 0L) {
-                        viewModel.createOrUpdateRoutine(routineName, routineDescription, dbStages)
+                        viewModel.createOrUpdateRoutine(routineName, routineDescription, autoRepeat, dbStages)
                     } else {
-                        viewModel.updateRoutineWithDetails(routineId, routineName, routineDescription, dbStages)
+                        viewModel.updateRoutineWithDetails(routineId, routineName, routineDescription, autoRepeat, dbStages)
                     }
 
                     onNavigateBack()

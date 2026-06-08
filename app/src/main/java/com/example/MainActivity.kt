@@ -22,6 +22,7 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.RoutineBuilderScreen
 import com.example.ui.screens.TrainingTimerScreen
 import com.example.ui.screens.SummaryScreen
+import com.example.ui.screens.HistoryManagementScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.MainViewModel
 import com.example.viewmodel.MainViewModelFactory
@@ -42,11 +43,28 @@ class MainActivity : ComponentActivity() {
     val factory = MainViewModelFactory(application, repository)
     val viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
 
+    handleIncomingIntent(intent, viewModel)
+
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
         MainAppNavHost(viewModel = viewModel)
       }
+    }
+  }
+
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    val database = AppDatabase.getDatabase(applicationContext)
+    val repository = AppRepository(database.appDao())
+    val factory = MainViewModelFactory(application, repository)
+    val viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
+    handleIncomingIntent(intent, viewModel)
+  }
+
+  private fun handleIncomingIntent(intent: android.content.Intent?, viewModel: MainViewModel) {
+    if (intent?.action == "com.example.lazyeyetimer.END_EARLY") {
+      viewModel.endSessionEarly()
     }
   }
 }
@@ -102,6 +120,9 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 },
                 onNavigateToEditRoutine = { routineId ->
                     navController.navigate("edit_routine/$routineId")
+                },
+                onNavigateToHistoryManagement = {
+                    navController.navigate("history_management")
                 }
             )
         }
@@ -143,6 +164,15 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                     navController.navigate("dashboard") {
                         popUpTo("dashboard") { inclusive = true }
                     }
+                }
+            )
+        }
+
+        composable("history_management") {
+            HistoryManagementScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }

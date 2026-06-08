@@ -74,6 +74,12 @@ interface AppDao {
     @Delete
     suspend fun deleteSession(session: Session)
 
+    @Query("DELETE FROM sessions WHERE id = :id")
+    suspend fun deleteSessionById(id: Long)
+
+    @Query("DELETE FROM stage_records WHERE sessionId = :sessionId")
+    suspend fun deleteStageRecordsBySessionId(sessionId: Long)
+
     // --- STAGE RECORDS ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStageRecord(record: StageRecord)

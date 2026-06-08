@@ -29,23 +29,110 @@ class MainViewModel(
     // --- USER PROFILE STATE (SharedPreferences) ---
     private val sharedPrefs = application.getSharedPreferences("amblyopia_timer_prefs", Context.MODE_PRIVATE)
 
-    private val _profileName = MutableStateFlow(sharedPrefs.getString("profile_name", "Amblyopia Patient") ?: "Amblyopia Patient")
+    private val _activeProfileId = MutableStateFlow(sharedPrefs.getString("active_patient_id", "default") ?: "default")
+    val activeProfileId: StateFlow<String> = _activeProfileId.asStateFlow()
+
+    private val _patientProfiles = MutableStateFlow<List<PatientProfile>>(emptyList())
+    val patientProfiles: StateFlow<List<PatientProfile>> = _patientProfiles.asStateFlow()
+
+    private val _profileName = MutableStateFlow("")
     val profileName: StateFlow<String> = _profileName.asStateFlow()
 
-    private val _profileAge = MutableStateFlow(sharedPrefs.getInt("profile_age", 6))
+    private val _profileAge = MutableStateFlow(6)
     val profileAge: StateFlow<Int> = _profileAge.asStateFlow()
 
-    private val _profileSex = MutableStateFlow(sharedPrefs.getString("profile_sex", "Not Specified") ?: "Not Specified")
+    private val _profileSex = MutableStateFlow("Not Specified")
     val profileSex: StateFlow<String> = _profileSex.asStateFlow()
 
-    private val _profileSoundPref = MutableStateFlow(sharedPrefs.getString("profile_sound_pref", "Gentle Chime") ?: "Gentle Chime")
+    private val _profileSoundPref = MutableStateFlow("Gentle Chime")
     val profileSoundPref: StateFlow<String> = _profileSoundPref.asStateFlow()
 
-    private val _profileEyepatchPref = MutableStateFlow(sharedPrefs.getString("profile_eyepatch_pref", "Right Eye Patched") ?: "Right Eye Patched")
+    private val _profileEyepatchPref = MutableStateFlow("Right Eye Patched")
     val profileEyepatchPref: StateFlow<String> = _profileEyepatchPref.asStateFlow()
 
-    private val _profileDoctorContact = MutableStateFlow(sharedPrefs.getString("profile_doctor_contact", "") ?: "")
+    private val _profileDoctorContact = MutableStateFlow("")
     val profileDoctorContact: StateFlow<String> = _profileDoctorContact.asStateFlow()
+
+    private fun getProfileIdList(): List<String> {
+        val idsString = sharedPrefs.getString("patient_profiles_ids", "") ?: ""
+        if (idsString.isEmpty()) return emptyList()
+        return idsString.split(",")
+    }
+
+    private fun saveProfileIdList(ids: List<String>) {
+        sharedPrefs.edit().putString("patient_profiles_ids", ids.joinToString(",")).apply()
+    }
+
+    private fun readProfile(id: String): PatientProfile {
+        if (id == "default") {
+            return PatientProfile(
+                id = "default",
+                name = sharedPrefs.getString("profile_name", "Amblyopia Patient") ?: "Amblyopia Patient",
+                age = sharedPrefs.getInt("profile_age", 6),
+                sex = sharedPrefs.getString("profile_sex", "Not Specified") ?: "Not Specified",
+                soundPref = sharedPrefs.getString("profile_sound_pref", "Gentle Chime") ?: "Gentle Chime",
+                eyepatchPref = sharedPrefs.getString("profile_eyepatch_pref", "Right Eye Patched") ?: "Right Eye Patched",
+                doctorContact = sharedPrefs.getString("profile_doctor_contact", "") ?: ""
+            )
+        }
+        return PatientProfile(
+            id = id,
+            name = sharedPrefs.getString("profile_${id}_name", "") ?: "",
+            age = sharedPrefs.getInt("profile_${id}_age", 6),
+            sex = sharedPrefs.getString("profile_${id}_sex", "Not Specified") ?: "Not Specified",
+            soundPref = sharedPrefs.getString("profile_${id}_sound_pref", "Gentle Chime") ?: "Gentle Chime",
+            eyepatchPref = sharedPrefs.getString("profile_${id}_eyepatch_pref", "Right Eye Patched") ?: "Right Eye Patched",
+            doctorContact = sharedPrefs.getString("profile_${id}_doctor_contact", "") ?: ""
+        )
+    }
+
+    private fun writeProfile(profile: PatientProfile) {
+        sharedPrefs.edit().apply {
+            if (profile.id == "default") {
+                putString("profile_name", profile.name)
+                putInt("profile_age", profile.age)
+                putString("profile_sex", profile.sex)
+                putString("profile_sound_pref", profile.soundPref)
+                putString("profile_eyepatch_pref", profile.eyepatchPref)
+                putString("profile_doctor_contact", profile.doctorContact)
+            } else {
+                putString("profile_${profile.id}_name", profile.name)
+                putInt("profile_${profile.id}_age", profile.age)
+                putString("profile_${profile.id}_sex", profile.sex)
+                putString("profile_${profile.id}_sound_pref", profile.soundPref)
+                putString("profile_${profile.id}_eyepatch_pref", profile.eyepatchPref)
+                putString("profile_${profile.id}_doctor_contact", profile.doctorContact)
+            }
+            apply()
+        }
+    }
+
+    private fun loadProfilesFromPrefs() {
+        var ids = getProfileIdList()
+        if (ids.isEmpty()) {
+            ids = listOf("default")
+            saveProfileIdList(ids)
+        }
+        val profilesList = ids.map { readProfile(it) }
+        _patientProfiles.value = profilesList
+
+        val currentActiveId = _activeProfileId.value
+        if (!ids.contains(currentActiveId)) {
+            _activeProfileId.value = "default"
+            sharedPrefs.edit().putString("active_patient_id", "default").apply()
+        }
+        updateActiveStateFlows()
+    }
+
+    private fun updateActiveStateFlows() {
+        val activeProfile = readProfile(_activeProfileId.value)
+        _profileName.value = activeProfile.name
+        _profileAge.value = activeProfile.age
+        _profileSex.value = activeProfile.sex
+        _profileSoundPref.value = activeProfile.soundPref
+        _profileEyepatchPref.value = activeProfile.eyepatchPref
+        _profileDoctorContact.value = activeProfile.doctorContact
+    }
 
     fun saveProfile(
         name: String,
@@ -55,21 +142,62 @@ class MainViewModel(
         eyepatchPref: String,
         doctorContact: String
     ) {
-        sharedPrefs.edit().apply {
-            putString("profile_name", name)
-            putInt("profile_age", age)
-            putString("profile_sex", sex)
-            putString("profile_sound_pref", soundPref)
-            putString("profile_eyepatch_pref", eyepatchPref)
-            putString("profile_doctor_contact", doctorContact)
-            apply()
+        val id = _activeProfileId.value
+        val profile = PatientProfile(id, name, age, sex, soundPref, eyepatchPref, doctorContact)
+        writeProfile(profile)
+        loadProfilesFromPrefs()
+    }
+
+    fun selectActiveProfile(id: String) {
+        _activeProfileId.value = id
+        sharedPrefs.edit().putString("active_patient_id", id).apply()
+        updateActiveStateFlows()
+    }
+
+    fun addProfile(
+        name: String,
+        age: Int,
+        sex: String,
+        soundPref: String,
+        eyepatchPref: String,
+        doctorContact: String
+    ) {
+        val newId = "patient_${System.currentTimeMillis()}"
+        val newProfile = PatientProfile(newId, name, age, sex, soundPref, eyepatchPref, doctorContact)
+        writeProfile(newProfile)
+
+        val ids = getProfileIdList().toMutableList()
+        ids.add(newId)
+        saveProfileIdList(ids)
+
+        _activeProfileId.value = newId
+        sharedPrefs.edit().putString("active_patient_id", newId).apply()
+        loadProfilesFromPrefs()
+    }
+
+    fun deleteProfile(id: String) {
+        if (id == "default") return
+        val ids = getProfileIdList().toMutableList()
+        if (ids.contains(id)) {
+            ids.remove(id)
+            saveProfileIdList(ids)
+
+            sharedPrefs.edit().apply {
+                remove("profile_${id}_name")
+                remove("profile_${id}_age")
+                remove("profile_${id}_sex")
+                remove("profile_${id}_sound_pref")
+                remove("profile_${id}_eyepatch_pref")
+                remove("profile_${id}_doctor_contact")
+                apply()
+            }
+
+            if (_activeProfileId.value == id) {
+                _activeProfileId.value = "default"
+                sharedPrefs.edit().putString("active_patient_id", "default").apply()
+            }
+            loadProfilesFromPrefs()
         }
-        _profileName.value = name
-        _profileAge.value = age
-        _profileSex.value = sex
-        _profileSoundPref.value = soundPref
-        _profileEyepatchPref.value = eyepatchPref
-        _profileDoctorContact.value = doctorContact
     }
 
     // --- DATABASE FLOWS ---
@@ -90,6 +218,7 @@ class MainViewModel(
     val completedStageRecords: StateFlow<List<StageRecord>> = TimerServiceState.completedStageRecords.asStateFlow()
 
     init {
+        loadProfilesFromPrefs()
         // Pre-populate clinic standard templates if database is fresh
         viewModelScope.launch {
             repository.prepopulateDefaultRoutinesIfNeeded()
@@ -150,9 +279,13 @@ class MainViewModel(
         
         viewModelScope.launch {
             val updatedSummary = summary.copy(notes = notes)
-            val sessionId = repository.insertSession(updatedSummary)
-            records.forEach { record ->
-                repository.insertStageRecord(record.copy(sessionId = sessionId))
+            if (updatedSummary.id > 0) {
+                repository.updateSession(updatedSummary)
+            } else {
+                val sessionId = repository.insertSession(updatedSummary)
+                records.forEach { record ->
+                    repository.insertStageRecord(record.copy(sessionId = sessionId))
+                }
             }
             
             // Clean active session
@@ -164,6 +297,12 @@ class MainViewModel(
     }
 
     fun discardSessionSummary() {
+        val summary = TimerServiceState.completedSessionSummary.value
+        if (summary != null && summary.id > 0) {
+            viewModelScope.launch {
+                repository.deleteSessionAndRecords(summary.id)
+            }
+        }
         TimerServiceState.activeRoutine.value = null
         TimerServiceState.completedSessionSummary.value = null
         TimerServiceState.completedStageRecords.value = emptyList()
@@ -174,6 +313,52 @@ class MainViewModel(
         return repository.getStageRecordsForSession(sessionId)
     }
 
+    // --- SESSION ADHERENCE LOG MANAGEMENT ---
+    fun deleteSession(sessionId: Long) {
+        viewModelScope.launch {
+            repository.deleteSessionAndRecords(sessionId)
+        }
+    }
+
+    fun deleteSessions(sessionIds: List<Long>) {
+        viewModelScope.launch {
+            sessionIds.forEach { id ->
+                repository.deleteSessionAndRecords(id)
+            }
+        }
+    }
+
+    fun addManualSession(
+        routineId: Long,
+        routineName: String,
+        startedAt: Long,
+        durationSeconds: Int,
+        notes: String,
+        status: String,
+        completionPercent: Int
+    ) {
+        viewModelScope.launch {
+            val session = Session(
+                routineId = routineId,
+                routineName = routineName,
+                startedAt = startedAt,
+                endedAt = startedAt + (durationSeconds * 1000L),
+                status = status,
+                plannedSeconds = durationSeconds,
+                recordedSeconds = durationSeconds,
+                completionPercent = completionPercent,
+                notes = notes
+            )
+            repository.insertSession(session)
+        }
+    }
+
+    fun updateSessionDetails(session: Session) {
+        viewModelScope.launch {
+            repository.updateSession(session)
+        }
+    }
+
     // --- ROUTINE MAKER ACTION WORKFLOWS ---
     fun deleteRoutine(routineId: Long) {
         viewModelScope.launch {
@@ -181,16 +366,16 @@ class MainViewModel(
         }
     }
 
-    fun createOrUpdateRoutine(name: String, description: String, stages: List<Stage>) {
+    fun createOrUpdateRoutine(name: String, description: String, autoRepeat: Boolean, stages: List<Stage>) {
         viewModelScope.launch {
-            val routine = Routine(name = name, description = description)
+            val routine = Routine(name = name, description = description, autoRepeat = autoRepeat)
             repository.saveRoutineWithStages(routine, stages)
         }
     }
 
-    fun updateRoutineWithDetails(routineId: Long, name: String, description: String, stages: List<Stage>) {
+    fun updateRoutineWithDetails(routineId: Long, name: String, description: String, autoRepeat: Boolean, stages: List<Stage>) {
         viewModelScope.launch {
-            val routine = Routine(id = routineId, name = name, description = description)
+            val routine = Routine(id = routineId, name = name, description = description, autoRepeat = autoRepeat)
             repository.saveRoutineWithStages(routine, stages)
         }
     }

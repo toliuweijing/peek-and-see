@@ -32,6 +32,11 @@ class AppRepository(private val appDao: AppDao) {
         return appDao.getSessionById(id)
     }
 
+    suspend fun deleteSessionAndRecords(sessionId: Long) {
+        appDao.deleteStageRecordsBySessionId(sessionId)
+        appDao.deleteSessionById(sessionId)
+    }
+
     suspend fun insertStageRecord(record: StageRecord) {
         appDao.insertStageRecord(record)
     }
@@ -172,6 +177,41 @@ class AppRepository(private val appDao: AppDao) {
                     )
                 )
             )
+            insertNewPatchPreset()
+        } else if (!existing.any { it.routine.name == "Patch" }) {
+            insertNewPatchPreset()
         }
+    }
+
+    private suspend fun insertNewPatchPreset() {
+        val newPatchRoutineId = appDao.insertRoutine(
+            Routine(
+                name = "Patch",
+                description = "A standard 25-minute patching therapy routine followed by a 5-minute break. Configured to auto-repeat.",
+                autoRepeat = true
+            )
+        )
+        appDao.insertStages(
+            listOf(
+                Stage(
+                    routineId = newPatchRoutineId,
+                    stageOrder = 1,
+                    name = "25-min Patch",
+                    durationSeconds = 1500,
+                    instruction = "Safely cover the stronger helper eye with your prescribed patch. Engage in near exercises.",
+                    requiresManualProceed = true,
+                    soundProfile = "Gentle Chime"
+                ),
+                Stage(
+                    routineId = newPatchRoutineId,
+                    stageOrder = 2,
+                    name = "5-min break",
+                    durationSeconds = 300,
+                    instruction = "Give your eyes a rest. Check distant objects, blink softly and slowly.",
+                    requiresManualProceed = true,
+                    soundProfile = "Loud Beep"
+                )
+            )
+        )
     }
 }

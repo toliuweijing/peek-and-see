@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
@@ -15,9 +16,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +36,7 @@ fun DashboardScreen(
     onStartTraining: (RoutineWithStages) -> Unit,
     onNavigateToCreateRoutine: () -> Unit,
     onNavigateToEditRoutine: (Long) -> Unit,
+    onNavigateToHistoryManagement: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableStateOf(0) } // 0: Home/Training, 1: History, 2: Profile
@@ -40,46 +44,46 @@ fun DashboardScreen(
     val alertManager = remember { AlertManager(context) }
 
     val routines by viewModel.routines.collectAsStateWithLifecycle()
+    val profileName by viewModel.profileName.collectAsStateWithLifecycle()
+    val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
     var expandedRoutineId by remember { mutableStateOf<Long?>(null) }
-    var showSafetyNotice by remember { mutableStateOf(true) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            LargeTopAppBar(
                 title = {
-                    Text(
-                        text = when (selectedTab) {
-                            0 -> "Amblyopia Timer"
-                            1 -> "Adherence History"
-                            else -> "Patient Profile"
-                        },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp
-                    )
-                },
-                actions = {
-                    if (selectedTab == 0) {
-                        IconButton(
-                            onClick = {
-                                alertManager.playLoudAlert("Gentle Chime")
-                                // Stop after 2 seconds automatically to prevent alarm hanging
-                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                    alertManager.stopAll()
-                                }, 2000)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = when (selectedTab) {
+                                0 -> {
+                                    if (profileName.isNotBlank() && profileName != "Amblyopia Patient") {
+                                        "$profileName's Drills"
+                                    } else {
+                                        "Clinician Drills"
+                                    }
+                                }
+                                1 -> "Compliance Logs"
+                                else -> "Lazy Eye Profile"
                             },
-                            modifier = Modifier.testTag("test_sound_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                contentDescription = "Test alarm volume"
-                            )
-                        }
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = when (selectedTab) {
+                                0 -> "Therapeutic gymnastic routines for active eye focus"
+                                1 -> "Track historic on-device workout logs & adherence"
+                                else -> "Configure offline diagnostics & audio alarm tones"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         },
@@ -87,42 +91,45 @@ fun DashboardScreen(
             NavigationBar(
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .testTag("main_bottom_nav_bar")
+                    .testTag("main_bottom_nav_bar"),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
             ) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(imageVector = Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Home", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(imageVector = if (selectedTab == 0) Icons.Default.Home else Icons.Default.Home, contentDescription = null) },
+                    label = { Text("Exercises", style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("nav_tab_home")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(imageVector = Icons.Default.History, contentDescription = null) },
-                    label = { Text("History", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(imageVector = if (selectedTab == 1) Icons.Default.History else Icons.Default.History, contentDescription = null) },
+                    label = { Text("Compliance", style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("nav_tab_history")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(imageVector = Icons.Default.Person, contentDescription = null) },
-                    label = { Text("Profile", fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(imageVector = if (selectedTab == 2) Icons.Default.Person else Icons.Default.Person, contentDescription = null) },
+                    label = { Text("Diagnostics", style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("nav_tab_profile")
                 )
             }
         },
         floatingActionButton = {
             if (selectedTab == 0) {
-                FloatingActionButton(
+                LargeFloatingActionButton(
                     onClick = onNavigateToCreateRoutine,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.testTag("add_routine_fab")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Create new routine layout"
+                        contentDescription = "Create new routine layout",
+                        modifier = Modifier.size(36.dp)
                     )
                 }
             }
@@ -143,93 +150,52 @@ fun DashboardScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // --- CLINICAL SAFETY COMPLIANCE HEADER ---
-                        if (showSafetyNotice) {
-                            item {
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Info,
-                                                    contentDescription = "Medical Alert Indicator",
-                                                    tint = MaterialTheme.colorScheme.onErrorContainer
-                                                )
-                                                Text(
-                                                    text = "Clinician Guideline / Safety Check",
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { showSafetyNotice = false },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close,
-                                                    contentDescription = "Dismiss advice panel",
-                                                    tint = MaterialTheme.colorScheme.onErrorContainer
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "This app is an adherence tracker for prescribed clinical programs and eye gymnastics. It does not replace professional diagnosis. Use ONLY with a personalized routine from an ophthalmologist or optometrist.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onErrorContainer
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // --- SECTION HEADER ---
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ListAlt,
-                                    contentDescription = "Routines section label",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
-                                Text(
-                                    text = "Your Training Routines",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-
                         if (routines.isEmpty()) {
                             item {
                                 Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(24.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
                                 ) {
-                                    Text(
-                                        text = "No routines designed. Use the (+) button below to create your eye gymnastics drills.",
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(24.dp),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(56.dp)
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Visibility,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "Design Eye gymnastics Drills",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Text(
+                                            text = "No routines designed yet. Touch the (+) button below to create custom clinical exercises, patch intervals, near-focus tracking, and reading drills prescribed for your amblyopia treatment.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                                            textAlign = TextAlign.Center,
+                                            lineHeight = 20.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -245,10 +211,14 @@ fun DashboardScreen(
                                         expandedRoutineId = if (isExpanded) null else routine.routine.id
                                     }
                                     .testTag("routine_card_${routine.routine.id}"),
+                                shape = RoundedCornerShape(20.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isExpanded) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                                    containerColor = if (isExpanded) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                                 ),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = if (isExpanded) 2.dp else 1.dp,
+                                    color = if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                                )
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
@@ -259,21 +229,69 @@ fun DashboardScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = routine.routine.name,
+                                                style = MaterialTheme.typography.titleLarge,
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 16.sp,
-                                                color = if (isExpanded) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                                color = MaterialTheme.colorScheme.onSurface,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "${routine.stages.size} Stage${if (routine.stages.size != 1) "s" else ""} • $totalMinutes mins total",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (isExpanded) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(6.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "${routine.stages.size} Stage${if (routine.stages.size != 1) "s" else ""}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                    )
+                                                }
+                                                if (routine.routine.autoRepeat) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(6.dp))
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Replay,
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                                modifier = Modifier.size(11.dp)
+                                                            )
+                                                            Text(
+                                                                text = "Auto-Repeat",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                Text(
+                                                    text = "• $totalMinutes mins total",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
                                         }
-                                        IconButton(onClick = { expandedRoutineId = if (isExpanded) null else routine.routine.id }) {
+                                        IconButton(
+                                            onClick = { expandedRoutineId = if (isExpanded) null else routine.routine.id },
+                                            colors = IconButtonDefaults.iconButtonColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        ) {
                                             Icon(
                                                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                                 contentDescription = "Expand routine drill tasks"
@@ -282,9 +300,9 @@ fun DashboardScreen(
                                     }
 
                                     Text(
-                                        text = routine.routine.description,
+                                        text = routine.routine.description.ifEmpty { "Clinical exercise design elements." },
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = if (isExpanded) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = if (isExpanded) Int.MAX_VALUE else 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.padding(top = 8.dp)
@@ -296,40 +314,65 @@ fun DashboardScreen(
                                         exit = fadeOut() + shrinkVertically()
                                     ) {
                                         Column(modifier = Modifier.padding(top = 12.dp)) {
-                                            HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
                                             Spacer(modifier = Modifier.height(8.dp))
 
                                             Text(
                                                 text = "Exercises Timeline:",
+                                                style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                color = MaterialTheme.colorScheme.primary
                                             )
+                                            Spacer(modifier = Modifier.height(6.dp))
 
                                             routine.sortedStages.forEachIndexed { stageIdx, stage ->
                                                 val durationStr = if (stage.durationSeconds >= 60) "${stage.durationSeconds / 60}m" else "${stage.durationSeconds}s"
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(vertical = 4.dp),
+                                                        .background(
+                                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        )
+                                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                        .padding(vertical = 2.dp),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(
-                                                        text = "${stageIdx + 1}. ${stage.name}",
-                                                        fontSize = 13.sp,
-                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                        modifier = Modifier.weight(1f),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(20.dp)
+                                                                .background(MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = "${stageIdx + 1}",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = stage.name,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
                                                     Text(
                                                         text = "$durationStr (${stage.soundProfile})",
-                                                        fontWeight = FontWeight.Medium,
-                                                        fontSize = 12.sp,
-                                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.primary
                                                     )
                                                 }
+                                                Spacer(modifier = Modifier.height(4.dp))
                                             }
 
                                             Spacer(modifier = Modifier.height(14.dp))
@@ -341,41 +384,48 @@ fun DashboardScreen(
                                                 Button(
                                                     onClick = { onStartTraining(routine) },
                                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                                    shape = RoundedCornerShape(10.dp),
                                                     modifier = Modifier
-                                                        .weight(1f)
+                                                        .weight(2f)
+                                                        .height(40.dp)
                                                         .testTag("start_btn_${routine.routine.id}")
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.PlayArrow,
                                                         contentDescription = "Start training loop button",
-                                                        modifier = Modifier.padding(end = 4.dp)
+                                                        modifier = Modifier.size(18.dp)
                                                     )
-                                                    Text("Start Drill", fontWeight = FontWeight.Bold)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Start Drill", style = MaterialTheme.typography.labelLarge)
                                                 }
 
                                                 IconButton(
                                                     onClick = { onNavigateToEditRoutine(routine.routine.id) },
                                                     colors = IconButtonDefaults.filledIconButtonColors(
-                                                        containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-                                                    )
+                                                        containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
+                                                    ),
+                                                    modifier = Modifier.size(40.dp)
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Edit,
                                                         contentDescription = "Edit clinician prescribed stages",
-                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
 
                                                 IconButton(
                                                     onClick = { viewModel.deleteRoutine(routine.routine.id) },
                                                     colors = IconButtonDefaults.filledIconButtonColors(
-                                                        containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                                                    )
+                                                        containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                                                    ),
+                                                    modifier = Modifier.size(40.dp)
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Delete,
                                                         contentDescription = "Delete routine template",
-                                                        tint = MaterialTheme.colorScheme.error
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
                                             }
@@ -387,7 +437,10 @@ fun DashboardScreen(
                     }
                 }
                 1 -> {
-                    HistoryScreen(viewModel = viewModel)
+                    HistoryScreen(
+                        viewModel = viewModel,
+                        onNavigateToHistoryManagement = onNavigateToHistoryManagement
+                    )
                 }
                 2 -> {
                     ProfileScreen(viewModel = viewModel)

@@ -95,6 +95,18 @@ class TimerService : Service() {
         return START_NOT_STICKY
     }
 
+    private fun startStageRunning(stage: Stage) {
+        alertManager.stopAll()
+        TimerServiceState.trainingState.value = TrainingState.RUNNING
+        lastNotifiedSeconds = -1
+        currentStageStartTime = System.currentTimeMillis()
+        targetStageEndTime = currentStageStartTime + (stage.durationSeconds * 1000L)
+        TimerServiceState.currentStageRemainingSeconds.value = stage.durationSeconds
+        TimerServiceState.currentStageProgress.value = 1.0f
+        
+        alertManager.playLoudAlert(stage.soundProfile)
+    }
+
     private fun handleStart() {
         val routine = TimerServiceState.activeRoutine.value ?: return
         
@@ -106,22 +118,15 @@ class TimerService : Service() {
         temporaryStageRecords.clear()
         
         TimerServiceState.currentStageIndex.value = 0
-        TimerServiceState.trainingState.value = TrainingState.RUNNING
-        
         sessionStartTime = System.currentTimeMillis()
-        currentStageStartTime = sessionStartTime
         
-        val stageSecs = routine.sortedStages.firstOrNull()?.durationSeconds ?: 0
-        targetStageEndTime = sessionStartTime + (stageSecs * 1000L)
-        
-        TimerServiceState.currentStageRemainingSeconds.value = stageSecs
-        TimerServiceState.currentStageProgress.value = 1.0f
+        val firstStage = routine.sortedStages.firstOrNull() ?: return
+        startStageRunning(firstStage)
         
         plannedTotalSeconds = routine.stages.sumOf { it.durationSeconds }
         actualAccumulatedSeconds = 0
         pausesCount = 0
         completedStagesCount = 0
-        lastNotifiedSeconds = -1
         
         startForegroundServiceProgress(isInitial = true)
         startTicker()
@@ -141,7 +146,7 @@ class TimerService : Service() {
         val minutes = remainingSecs / 60
         val seconds = remainingSecs % 60
         val timeLeftFormatted = String.format("%02d:%02d", minutes, seconds)
-        val nextStageExists = (currentStageIndexVal + 1) < routine.stages.size
+        val nextStageExists = (currentStageIndexVal + 1) < routine.stages.size || routine.routine.autoRepeat
         
         val notification = notificationHelper.buildTimerNotification(
             routineName = routine.routine.name,
@@ -222,10 +227,8 @@ class TimerService : Service() {
         )
         completedStagesCount++
         
-        alertManager.playLoudAlert(stage.soundProfile)
-        
         // Post stage expired notification
-        val nextStageExists = (currentStageIndexVal + 1) < routine.stages.size
+        val nextStageExists = (currentStageIndexVal + 1) < routine.stages.size || routine.routine.autoRepeat
         val expiredNotification = notificationHelper.buildTimerNotification(
             routineName = routine.routine.name,
             stageName = "Completed: ${stage.name}",
@@ -261,45 +264,36 @@ class TimerService : Service() {
     }
 
     private fun handleRepeat() {
-        alertManager.stopAll()
         val routine = TimerServiceState.activeRoutine.value ?: return
         val currentIdx = TimerServiceState.currentStageIndex.value
         val stage = routine.sortedStages.getOrNull(currentIdx) ?: return
         
-        TimerServiceState.trainingState.value = TrainingState.RUNNING
-        lastNotifiedSeconds = -1
-        targetStageEndTime = System.currentTimeMillis() + (stage.durationSeconds * 1000L)
-        TimerServiceState.currentStageRemainingSeconds.value = stage.durationSeconds
-        TimerServiceState.currentStageProgress.value = 1.0f
-        currentStageStartTime = System.currentTimeMillis()
-        
+        startStageRunning(stage)
         startForegroundServiceProgress(isInitial = false)
     }
 
     private fun handleNext() {
-        alertManager.stopAll()
         val routine = TimerServiceState.activeRoutine.value ?: return
         val nextIdx = TimerServiceState.currentStageIndex.value + 1
         
         if (nextIdx < routine.sortedStages.size) {
             TimerServiceState.currentStageIndex.value = nextIdx
             val nextStage = routine.sortedStages[nextIdx]
-            
-            TimerServiceState.trainingState.value = TrainingState.RUNNING
-            lastNotifiedSeconds = -1
-            targetStageEndTime = System.currentTimeMillis() + (nextStage.durationSeconds * 1000L)
-            TimerServiceState.currentStageRemainingSeconds.value = nextStage.durationSeconds
-            TimerServiceState.currentStageProgress.value = 1.0f
-            currentStageStartTime = System.currentTimeMillis()
-            
+            startStageRunning(nextStage)
             startForegroundServiceProgress(isInitial = false)
         } else {
-            finishSession()
+            if (routine.routine.autoRepeat && routine.sortedStages.isNotEmpty()) {
+                TimerServiceState.currentStageIndex.value = 0
+                val firstStage = routine.sortedStages[0]
+                startStageRunning(firstStage)
+                startForegroundServiceProgress(isInitial = false)
+            } else {
+                finishSession()
+            }
         }
     }
 
     private fun handleSkip() {
-        alertManager.stopAll()
         val routine = TimerServiceState.activeRoutine.value ?: return
         val currentIdx = TimerServiceState.currentStageIndex.value
         val stage = routine.sortedStages.getOrNull(currentIdx)
@@ -321,17 +315,17 @@ class TimerService : Service() {
         if (nextIdx < routine.sortedStages.size) {
             TimerServiceState.currentStageIndex.value = nextIdx
             val nextStage = routine.sortedStages[nextIdx]
-            
-            TimerServiceState.trainingState.value = TrainingState.RUNNING
-            lastNotifiedSeconds = -1
-            targetStageEndTime = System.currentTimeMillis() + (nextStage.durationSeconds * 1000L)
-            TimerServiceState.currentStageRemainingSeconds.value = nextStage.durationSeconds
-            TimerServiceState.currentStageProgress.value = 1.0f
-            currentStageStartTime = System.currentTimeMillis()
-            
+            startStageRunning(nextStage)
             startForegroundServiceProgress(isInitial = false)
         } else {
-            finishSession()
+            if (routine.routine.autoRepeat && routine.sortedStages.isNotEmpty()) {
+                TimerServiceState.currentStageIndex.value = 0
+                val firstStage = routine.sortedStages[0]
+                startStageRunning(firstStage)
+                startForegroundServiceProgress(isInitial = false)
+            } else {
+                finishSession()
+            }
         }
     }
 
@@ -387,9 +381,7 @@ class TimerService : Service() {
                 notes = "Session terminated early by user."
             )
             
-            TimerServiceState.completedSessionSummary.value = sessionReport
-            TimerServiceState.completedStageRecords.value = ArrayList(temporaryStageRecords)
-            TimerServiceState.trainingState.value = TrainingState.COMPLETED
+            autoSaveSessionAndRecords(sessionReport, ArrayList(temporaryStageRecords))
         } else {
             TimerServiceState.trainingState.value = TrainingState.IDLE
         }
@@ -420,10 +412,37 @@ class TimerService : Service() {
             notes = "Completed $completedStagesCount/${routine.stages.size} tasks. Paused $pausesCount times."
         )
 
-        TimerServiceState.completedSessionSummary.value = summary
-        TimerServiceState.completedStageRecords.value = ArrayList(temporaryStageRecords)
-        TimerServiceState.trainingState.value = TrainingState.COMPLETED
+        autoSaveSessionAndRecords(summary, ArrayList(temporaryStageRecords))
         
         stopSelf()
+    }
+
+    private fun autoSaveSessionAndRecords(session: Session, records: List<StageRecord>) {
+        serviceScope.launch {
+            try {
+                val db = AppDatabase.getDatabase(applicationContext)
+                val repository = AppRepository(db.appDao())
+                val sessionId = repository.insertSession(session)
+                records.forEach { record ->
+                    repository.insertStageRecord(record.copy(sessionId = sessionId))
+                }
+                
+                val savedSession = session.copy(id = sessionId)
+                val savedRecords = records.map { it.copy(sessionId = sessionId) }
+                
+                withContext(Dispatchers.Main) {
+                    TimerServiceState.completedSessionSummary.value = savedSession
+                    TimerServiceState.completedStageRecords.value = savedRecords
+                    TimerServiceState.trainingState.value = TrainingState.COMPLETED
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    TimerServiceState.completedSessionSummary.value = session
+                    TimerServiceState.completedStageRecords.value = records
+                    TimerServiceState.trainingState.value = TrainingState.COMPLETED
+                }
+            }
+        }
     }
 }
