@@ -84,6 +84,15 @@ class TimerService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Ensure alarms don't keep ringing if the user force-closes the app by swiping it away during an alert
+        alertManager.stopAll()
+        if (TimerServiceState.trainingState.value == TrainingState.EXPIRED_WAITING) {
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
         tickerJob?.cancel()
         serviceScope.cancel()

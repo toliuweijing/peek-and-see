@@ -90,13 +90,24 @@ class AlertManager(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        
         try {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-            mediaPlayer = null
+            mediaPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
+        } finally {
+            try {
+                mediaPlayer?.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            mediaPlayer = null
         }
+        
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager

@@ -269,6 +269,7 @@ class MainViewModel(
 
     // --- FINAL REPORT PERSISTENCE ---
     fun finalizeAndSaveSession(notes: String) {
+        stopAudioAlarm()
         val summary = TimerServiceState.completedSessionSummary.value ?: return
         val records = TimerServiceState.completedStageRecords.value
         
@@ -292,6 +293,7 @@ class MainViewModel(
     }
 
     fun discardSessionSummary() {
+        stopAudioAlarm()
         val summary = TimerServiceState.completedSessionSummary.value
         if (summary != null && summary.id > 0) {
             viewModelScope.launch {
