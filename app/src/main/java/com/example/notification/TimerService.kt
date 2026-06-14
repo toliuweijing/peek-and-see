@@ -101,7 +101,27 @@ class TimerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        val action = intent?.action
+        if (action == ACTION_STAGE_EXPIRED) {
+            android.util.Log.d("TimerService", "ACTION_STAGE_EXPIRED received at ${System.currentTimeMillis()}")
+            
+            val routine = TimerServiceState.activeRoutine.value
+            if (routine == null) {
+                // Safeguard against rare system-kill scenarios: create base placeholder to keep system happy, then self-terminate.
+                val fallbackNotification = androidx.core.app.NotificationCompat.Builder(applicationContext, NotificationHelper.TIMER_CHANNEL_ID)
+                    .setContentTitle("Lazy Eye Training")
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                    .setContentText("Workout complete or inactive.")
+                    .build()
+                startForeground(NotificationHelper.NOTIFICATION_ID, fallbackNotification)
+                stopSelf()
+                return START_NOT_STICKY
+            } else {
+                startForegroundServiceProgress(isInitial = true)
+            }
+        }
+
+        when (action) {
             ACTION_START -> handleStart()
             ACTION_PAUSE -> handlePause()
             ACTION_RESUME -> handleResume()
@@ -531,6 +551,7 @@ class TimerService : Service() {
     }
 
     private fun scheduleExpiryAlarm(timeInMillis: Long) {
+        android.util.Log.d("TimerService", "Scheduling setAlarmClock at $timeInMillis")
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(applicationContext, TimerReceiver::class.java).apply {
             action = ACTION_STAGE_EXPIRED

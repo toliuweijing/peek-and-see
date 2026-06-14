@@ -41,6 +41,7 @@ class AlertManager(private val context: Context) {
                 )
                 setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
                 prepare()
+                android.util.Log.d("AlertManager", "MediaPlayer start() called at ${System.currentTimeMillis()}")
                 start()
             }
             vibrateAlert()

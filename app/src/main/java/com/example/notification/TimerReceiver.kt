@@ -9,6 +9,7 @@ import android.util.Log
 class TimerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
+        Log.d("TimerReceiver", "Alarm broadcast received at ${System.currentTimeMillis()}")
         Log.d("TimerReceiver", "Alarm broadcast received with action: $action")
         
         if (action == TimerService.ACTION_STAGE_EXPIRED) {
@@ -27,9 +28,11 @@ class TimerReceiver : BroadcastReceiver() {
                 this.action = TimerService.ACTION_STAGE_EXPIRED
             }
             try {
-                // Since the service is already running as a foreground service, 
-                // we can safely call startService to deliver the new action.
-                context.startService(serviceIntent)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
             } catch (e: Exception) {
                 Log.e("TimerReceiver", "Failed to start TimerService upon alarm: ${e.message}", e)
                 try {
