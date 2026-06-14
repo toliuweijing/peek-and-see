@@ -1,12 +1,15 @@
 package com.example.notification
 
+import android.app.AlarmManager
 import android.app.Notification
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import com.example.alert.AlertManager
 import com.example.data.*
 import com.example.viewmodel.TrainingState
@@ -28,6 +31,7 @@ class TimerService : Service() {
     private lateinit var notificationHelper: NotificationHelper
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var tickerJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // Analytics / Tracker variables
     private var sessionStartTime: Long = 0
@@ -50,6 +54,7 @@ class TimerService : Service() {
         const val ACTION_STOP_ALARM = "com.example.lazyeyetimer.STOP_ALARM"
         const val ACTION_END_EARLY = "com.example.lazyeyetimer.END_EARLY"
         const val ACTION_REPEAT = "com.example.lazyeyetimer.REPEAT"
+        const val ACTION_STAGE_EXPIRED = "com.example.lazyeyetimer.STAGE_EXPIRED"
         
         fun startService(context: Context, routine: RoutineWithStages) {
             TimerServiceState.activeRoutine.value = routine
@@ -69,13 +74,27 @@ class TimerService : Service() {
         super.onCreate()
         alertManager = AlertManager(applicationContext)
         notificationHelper = NotificationHelper(applicationContext)
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LazyEyeTimer:TrainingWakeLock")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onDestroy() {
         tickerJob?.cancel()
         serviceScope.cancel()
+        cancelExpiryAlarm()
         alertManager.stopAll()
         notificationHelper.cancelNotification()
+        if (wakeLock?.isHeld == true) {
+            try {
+                wakeLock?.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         super.onDestroy()
     }
 
@@ -91,6 +110,7 @@ class TimerService : Service() {
             ACTION_STOP_ALARM -> handleStopAlarm()
             ACTION_REPEAT -> handleRepeat()
             ACTION_END_EARLY -> handleEndEarly()
+            ACTION_STAGE_EXPIRED -> handleStageExpiredFromAlarm()
         }
         return START_NOT_STICKY
     }
@@ -104,11 +124,21 @@ class TimerService : Service() {
         TimerServiceState.currentStageRemainingSeconds.value = stage.durationSeconds
         TimerServiceState.currentStageProgress.value = 1.0f
         
-        alertManager.playLoudAlert(stage.soundProfile)
+        scheduleExpiryAlarm(targetStageEndTime)
+        
+        alertManager.playLoudAlert(stage.soundProfileStart)
     }
 
     private fun handleStart() {
         val routine = TimerServiceState.activeRoutine.value ?: return
+        
+        if (wakeLock?.isHeld != true) {
+            try {
+                wakeLock?.acquire(2 * 60 * 60 * 1000L) // limit of 2 hours, safe fallback
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         
         alertManager.stopAll()
         notificationHelper.cancelNotification()
@@ -204,16 +234,15 @@ class TimerService : Service() {
     }
 
     private fun onStageExpired() {
-        TimerServiceState.trainingState.value = TrainingState.EXPIRED_WAITING
-        TimerServiceState.currentStageRemainingSeconds.value = 0
-        TimerServiceState.currentStageProgress.value = 0f
-        
-        val planSecs = getActiveStageSeconds()
-        actualAccumulatedSeconds += planSecs
+        if (TimerServiceState.trainingState.value != TrainingState.RUNNING) return
+        cancelExpiryAlarm()
         
         val routine = TimerServiceState.activeRoutine.value ?: return
         val currentStageIndexVal = TimerServiceState.currentStageIndex.value
         val stage = routine.sortedStages.getOrNull(currentStageIndexVal) ?: return
+        
+        val planSecs = getActiveStageSeconds()
+        actualAccumulatedSeconds += planSecs
         
         temporaryStageRecords.add(
             StageRecord(
@@ -227,22 +256,38 @@ class TimerService : Service() {
         )
         completedStagesCount++
         
-        // Post stage expired notification
-        val nextStageExists = (currentStageIndexVal + 1) < routine.stages.size || routine.routine.autoRepeat
-        val expiredNotification = notificationHelper.buildTimerNotification(
-            routineName = routine.routine.name,
-            stageName = "Completed: ${stage.name}",
-            timeLeftFormatted = "Time Expired",
-            state = TrainingState.EXPIRED_WAITING,
-            nextStageExists = nextStageExists
-        )
-        notificationHelper.updateNotification(expiredNotification)
+        // Play sound when ending active stage
+        alertManager.playLoudAlert(stage.soundProfileEnd)
+        
+        if (stage.requiresManualProceed) {
+            TimerServiceState.trainingState.value = TrainingState.EXPIRED_WAITING
+            TimerServiceState.currentStageRemainingSeconds.value = 0
+            TimerServiceState.currentStageProgress.value = 0f
+
+            // Post stage expired notification
+            val nextStageExists = (currentStageIndexVal + 1) < routine.stages.size || routine.routine.autoRepeat
+            val expiredNotification = notificationHelper.buildTimerNotification(
+                routineName = routine.routine.name,
+                stageName = "Completed: ${stage.name}",
+                timeLeftFormatted = "Time Expired",
+                state = TrainingState.EXPIRED_WAITING,
+                nextStageExists = nextStageExists
+            )
+            notificationHelper.updateNotification(expiredNotification)
+        } else {
+            // Safe, immediate auto-advance dispatched to the Main loop
+            serviceScope.launch(Dispatchers.Main) {
+                handleNext()
+            }
+        }
     }
 
     private fun handlePause() {
         if (TimerServiceState.trainingState.value != TrainingState.RUNNING) return
         TimerServiceState.trainingState.value = TrainingState.PAUSED
         pausesCount++
+        
+        cancelExpiryAlarm()
         
         val now = System.currentTimeMillis()
         pausedRemainingSeconds = ((targetStageEndTime - now) / 1000).toInt().coerceAtLeast(0)
@@ -254,7 +299,16 @@ class TimerService : Service() {
         TimerServiceState.trainingState.value = TrainingState.RUNNING
         lastNotifiedSeconds = -1
         
+        if (wakeLock?.isHeld != true) {
+            try {
+                wakeLock?.acquire(2 * 60 * 60 * 1000L)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
         targetStageEndTime = System.currentTimeMillis() + (pausedRemainingSeconds * 1000L)
+        scheduleExpiryAlarm(targetStageEndTime)
         startForegroundServiceProgress(isInitial = false)
     }
 
@@ -332,30 +386,52 @@ class TimerService : Service() {
     private fun handleEndEarly() {
         alertManager.stopAll()
         tickerJob?.cancel()
+        cancelExpiryAlarm()
         
         val routine = TimerServiceState.activeRoutine.value
         if (routine != null) {
             val now = System.currentTimeMillis()
+            val currentStageIndexVal = TimerServiceState.currentStageIndex.value
+            val stateVal = TimerServiceState.trainingState.value
+            
+            // 1. Calculate active stage's actual elapsed seconds if it was running or paused
+            var activeElapsed = 0
+            if (stateVal == TrainingState.RUNNING || stateVal == TrainingState.PAUSED) {
+                val stage = routine.sortedStages.getOrNull(currentStageIndexVal)
+                if (stage != null) {
+                    activeElapsed = if (stateVal == TrainingState.RUNNING) {
+                        ((System.currentTimeMillis() - currentStageStartTime) / 1000).toInt()
+                            .coerceIn(0, stage.durationSeconds)
+                    } else {
+                        (stage.durationSeconds - pausedRemainingSeconds)
+                            .coerceIn(0, stage.durationSeconds)
+                    }
+                }
+            }
+            
+            val totalRecordedSeconds = actualAccumulatedSeconds + activeElapsed
             val finalPercent = if (plannedTotalSeconds > 0) {
-                (actualAccumulatedSeconds * 100 / plannedTotalSeconds).coerceAtMost(100)
+                (totalRecordedSeconds * 100 / plannedTotalSeconds).coerceIn(0, 100)
             } else 0
             
-            for (idx in TimerServiceState.currentStageIndex.value until routine.sortedStages.size) {
+            // 2. Build stage records for current and remaining stages
+            for (idx in currentStageIndexVal until routine.sortedStages.size) {
                 val stage = routine.sortedStages[idx]
-                if (idx == TimerServiceState.currentStageIndex.value && TimerServiceState.trainingState.value == TrainingState.RUNNING) {
-                    val elapsed = ((System.currentTimeMillis() - currentStageStartTime) / 1000).toInt()
-                        .coerceAtMost(stage.durationSeconds)
-                    temporaryStageRecords.add(
-                        StageRecord(
-                            sessionId = 0,
-                            stageName = stage.name,
-                            durationSeconds = stage.durationSeconds,
-                            recordedSeconds = elapsed,
-                            status = "Abandoned",
-                            stageOrder = stage.stageOrder
+                if (idx == currentStageIndexVal) {
+                    if (stateVal == TrainingState.RUNNING || stateVal == TrainingState.PAUSED) {
+                        temporaryStageRecords.add(
+                            StageRecord(
+                                sessionId = 0,
+                                stageName = stage.name,
+                                durationSeconds = stage.durationSeconds,
+                                recordedSeconds = activeElapsed,
+                                status = "Abandoned",
+                                stageOrder = stage.stageOrder
+                            )
                         )
-                    )
-                } else if (idx > TimerServiceState.currentStageIndex.value) {
+                    }
+                    // If stateVal was EXPIRED_WAITING, it was already added during onStageExpired()
+                } else {
                     temporaryStageRecords.add(
                         StageRecord(
                             sessionId = 0,
@@ -376,7 +452,7 @@ class TimerService : Service() {
                 endedAt = now,
                 status = "Abandoned",
                 plannedSeconds = plannedTotalSeconds,
-                recordedSeconds = actualAccumulatedSeconds,
+                recordedSeconds = totalRecordedSeconds,
                 completionPercent = finalPercent,
                 notes = "Session terminated early by user."
             )
@@ -384,14 +460,14 @@ class TimerService : Service() {
             autoSaveSessionAndRecords(sessionReport, ArrayList(temporaryStageRecords))
         } else {
             TimerServiceState.trainingState.value = TrainingState.IDLE
+            stopSelf()
         }
-        
-        stopSelf()
     }
 
     private fun finishSession() {
         alertManager.stopAll()
         tickerJob?.cancel()
+        cancelExpiryAlarm()
         
         val routine = TimerServiceState.activeRoutine.value ?: return
         val now = System.currentTimeMillis()
@@ -413,8 +489,6 @@ class TimerService : Service() {
         )
 
         autoSaveSessionAndRecords(summary, ArrayList(temporaryStageRecords))
-        
-        stopSelf()
     }
 
     private fun autoSaveSessionAndRecords(session: Session, records: List<StageRecord>) {
@@ -442,7 +516,93 @@ class TimerService : Service() {
                     TimerServiceState.completedStageRecords.value = records
                     TimerServiceState.trainingState.value = TrainingState.COMPLETED
                 }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    stopSelf()
+                }
             }
+        }
+    }
+
+    private fun handleStageExpiredFromAlarm() {
+        if (TimerServiceState.trainingState.value == TrainingState.RUNNING) {
+            onStageExpired()
+        }
+    }
+
+    private fun scheduleExpiryAlarm(timeInMillis: Long) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(applicationContext, TimerReceiver::class.java).apply {
+            action = ACTION_STAGE_EXPIRED
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getBroadcast(applicationContext, 8888, intent, flags)
+        
+        val showIntent = Intent(applicationContext, com.example.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val showFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val showPendingIntent = PendingIntent.getActivity(applicationContext, 0, showIntent, showFlags)
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                val alarmClockInfo = AlarmManager.AlarmClockInfo(timeInMillis, showPendingIntent)
+                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            } else {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+                } else {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+                }
+            }
+        } catch (e: SecurityException) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+                } else {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+                }
+            } catch (ex: SecurityException) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+                    } else {
+                        alarmManager.set(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+                    }
+                } catch (exc: Exception) {
+                    exc.printStackTrace()
+                }
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun cancelExpiryAlarm() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(applicationContext, TimerReceiver::class.java).apply {
+            action = ACTION_STAGE_EXPIRED
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getBroadcast(applicationContext, 8888, intent, flags)
+        try {
+            alarmManager.cancel(pendingIntent)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

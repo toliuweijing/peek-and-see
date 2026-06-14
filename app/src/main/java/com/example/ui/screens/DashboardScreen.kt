@@ -51,41 +51,63 @@ fun DashboardScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            LargeTopAppBar(
-                title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = when (selectedTab) {
-                                0 -> {
-                                    if (profileName.isNotBlank() && profileName != "Amblyopia Patient") {
-                                        "$profileName's Drills"
-                                    } else {
-                                        "Clinician Drills"
-                                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = when (selectedTab) {
+                            0 -> {
+                                if (profileName.isNotBlank() && profileName != "Amblyopia Patient") {
+                                    "$profileName's Drills"
+                                } else {
+                                    "Clinician Drills"
                                 }
-                                1 -> "Compliance Logs"
-                                else -> "Lazy Eye Profile"
-                            },
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            }
+                            1 -> "Compliance Logs"
+                            else -> "Lazy Eye Profile"
+                        },
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = when (selectedTab) {
+                            0 -> "Therapeutic gymnastic routines for active eye focus"
+                            1 -> "Track historic on-device workout logs & adherence"
+                            else -> "Configure offline diagnostics & audio alarm tones"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (selectedTab == 2) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = { viewModel.onSaveProfileClick?.invoke() },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("save_profile_btn"),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = "Save profile info",
+                            modifier = Modifier.size(16.dp)
                         )
-                        Text(
-                            text = when (selectedTab) {
-                                0 -> "Therapeutic gymnastic routines for active eye focus"
-                                1 -> "Track historic on-device workout logs & adherence"
-                                else -> "Configure offline diagnostics & audio alarm tones"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
-                },
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
+                }
+            }
         },
         bottomBar = {
             NavigationBar(
@@ -366,7 +388,7 @@ fun DashboardScreen(
                                                         )
                                                     }
                                                     Text(
-                                                        text = "$durationStr (${stage.soundProfile})",
+                                                        text = "$durationStr (Start: ${stage.soundProfileStart} • End: ${stage.soundProfileEnd})",
                                                         style = MaterialTheme.typography.bodySmall,
                                                         fontWeight = FontWeight.Bold,
                                                         color = MaterialTheme.colorScheme.primary

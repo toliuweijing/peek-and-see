@@ -1,11 +1,17 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -56,7 +62,9 @@ fun RoutineBuilderScreen(
                         durationMinutes = mins.toString(),
                         durationSeconds = secs.toString(),
                         instruction = s.instruction,
-                        soundProfile = s.soundProfile
+                        soundProfileStart = s.soundProfileStart,
+                        soundProfileEnd = s.soundProfileEnd,
+                        requiresManualProceed = s.requiresManualProceed
                     )
                 )
             }
@@ -73,7 +81,9 @@ fun RoutineBuilderScreen(
                 durationMinutes = "1",
                 durationSeconds = "0",
                 instruction = "Cover the stronger eye with the patch helper.",
-                soundProfile = "Gentle Chime"
+                soundProfileStart = "None",
+                soundProfileEnd = "Gentle Chime",
+                requiresManualProceed = true
             )
         )
         editableStages.add(
@@ -82,7 +92,9 @@ fun RoutineBuilderScreen(
                 durationMinutes = "15",
                 durationSeconds = "0",
                 instruction = "Keep eye patch on. Read, draw, or trace near targets.",
-                soundProfile = "Loud Beep"
+                soundProfileStart = "Gentle Chime",
+                soundProfileEnd = "Loud Beep",
+                requiresManualProceed = true
             )
         )
         hasInitialized = true
@@ -216,7 +228,9 @@ fun RoutineBuilderScreen(
                                 durationMinutes = "5",
                                 durationSeconds = "0",
                                 instruction = "Clinician instruction details here...",
-                                soundProfile = "Loud Beep"
+                                soundProfileStart = "Gentle Chime",
+                                soundProfileEnd = "Loud Beep",
+                                requiresManualProceed = true
                             )
                         )
                     },
@@ -325,29 +339,140 @@ fun RoutineBuilderScreen(
                             maxLines = 2
                         )
 
-                        // Sound alert spinner-type segment
+                        // Toggle for manual proceed gate
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Requires manual confirmation",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Wait for user confirmation (gate screen) instead of auto-advancing.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = stage.requiresManualProceed,
+                                onCheckedChange = { checked ->
+                                    editableStages[index] = stage.copy(requiresManualProceed = checked)
+                                },
+                                modifier = Modifier.testTag("stage_manual_proceed_switch_$index")
+                            )
+                        }
+
+                        // Sound alerts configuration
+                        var activeSoundTabIndex by remember { mutableStateOf(0) }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "Alarm sound: ",
+                                text = "Stage Alerts Sound",
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.weight(1f)
-                              )
-                            
-                            val soundProfiles = listOf("Loud Beep", "Gentle Chime", "Victory Gong")
-                            soundProfiles.forEach { profile ->
-                                val selected = stage.soundProfile == profile
-                                FilterChip(
-                                    selected = selected,
-                                    onClick = {
-                                        editableStages[index] = stage.copy(soundProfile = profile)
-                                    },
-                                    label = { Text(profile, fontSize = 10.sp) },
-                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            // Modern Segmented Tab UI
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val tabTitles = listOf(
+                                    "On Start: ${stage.soundProfileStart}",
+                                    "On End: ${stage.soundProfileEnd}"
                                 )
+                                tabTitles.forEachIndexed { tabIndex, title ->
+                                    val selected = activeSoundTabIndex == tabIndex
+                                    val backgroundColor by animateColorAsState(
+                                        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        label = "tabBg"
+                                    )
+                                    val contentColor by animateColorAsState(
+                                        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        label = "tabContent"
+                                    )
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(backgroundColor)
+                                            .clickable { activeSoundTabIndex = tabIndex }
+                                            .padding(vertical = 8.dp)
+                                            .testTag(if (tabIndex == 0) "stage_${index}_sound_start_tab" else "stage_${index}_sound_end_tab"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = title,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                            color = contentColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Horizontally scrollable selection chips wrapping content
+                            val soundProfiles = listOf("None", "Loud Beep", "Gentle Chime", "Victory Gong")
+                            val chipScrollState = rememberScrollState()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(chipScrollState)
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                soundProfiles.forEach { profile ->
+                                    val selected = if (activeSoundTabIndex == 0) {
+                                        stage.soundProfileStart == profile
+                                    } else {
+                                        stage.soundProfileEnd == profile
+                                    }
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = {
+                                            if (activeSoundTabIndex == 0) {
+                                                editableStages[index] = stage.copy(soundProfileStart = profile)
+                                            } else {
+                                                editableStages[index] = stage.copy(soundProfileEnd = profile)
+                                            }
+                                        },
+                                        label = { 
+                                            Text(
+                                                text = profile, 
+                                                style = MaterialTheme.typography.labelSmall
+                                            ) 
+                                        },
+                                        modifier = Modifier.testTag(
+                                            if (activeSoundTabIndex == 0) {
+                                                "stage_start_sound_${index}_$profile"
+                                            } else {
+                                                "stage_end_sound_${index}_$profile"
+                                            }
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
@@ -389,8 +514,9 @@ fun RoutineBuilderScreen(
                             name = stage.name,
                             durationSeconds = if (totalSecs > 0) totalSecs else 10, // Min fallback
                             instruction = stage.instruction,
-                            requiresManualProceed = true,
-                            soundProfile = stage.soundProfile
+                            requiresManualProceed = stage.requiresManualProceed,
+                            soundProfileStart = stage.soundProfileStart,
+                            soundProfileEnd = stage.soundProfileEnd
                         )
                     }
 
@@ -424,5 +550,7 @@ private data class EditableStage(
     val durationMinutes: String,
     val durationSeconds: String,
     val instruction: String,
-    val soundProfile: String
+    val soundProfileStart: String,
+    val soundProfileEnd: String,
+    val requiresManualProceed: Boolean = true
 )

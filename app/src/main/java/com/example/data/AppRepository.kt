@@ -68,7 +68,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 10, // short for test/onboarding, wait logic applies
                         instruction = "Safely cover the stronger helper eye with your prescribed patch. Confirm when ready.",
                         requiresManualProceed = true,
-                        soundProfile = "Gentle Chime"
+                        soundProfileStart = "Gentle Chime",
+                        soundProfileEnd = "Gentle Chime"
                     ),
                     Stage(
                         routineId = patchRoutineId,
@@ -77,7 +78,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 1200, // 20 minutes
                         instruction = "Keep the patch on. Engage in near visual activities, e.g., reading a book, coloring, or tracing shapes.",
                         requiresManualProceed = true,
-                        soundProfile = "Loud Beep"
+                        soundProfileStart = "Gentle Chime",
+                        soundProfileEnd = "Loud Beep"
                     ),
                     Stage(
                         routineId = patchRoutineId,
@@ -86,7 +88,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 300, // 5 minutes
                         instruction = "Give the active lazy eye a gentle rest. Look at distant scenery, and close/blink eyes soft and slow.",
                         requiresManualProceed = true,
-                        soundProfile = "Loud Beep"
+                        soundProfileStart = "Gentle Chime",
+                        soundProfileEnd = "Loud Beep"
                     ),
                     Stage(
                         routineId = patchRoutineId,
@@ -95,7 +98,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 900, // 15 minutes
                         instruction = "Perform detailed visual focus drills (solving puzzles, maze tracing, or playing tablet target-focus games).",
                         requiresManualProceed = true,
-                        soundProfile = "Loud Beep"
+                        soundProfileStart = "Gentle Chime",
+                        soundProfileEnd = "Loud Beep"
                     ),
                     Stage(
                         routineId = patchRoutineId,
@@ -104,7 +108,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 10,
                         instruction = "Excellent effort! You can now safely remove the patch from the stronger eye.",
                         requiresManualProceed = true,
-                        soundProfile = "Victory Gong"
+                        soundProfileStart = "Gentle Chime",
+                        soundProfileEnd = "Victory Gong"
                     )
                 )
             )
@@ -125,7 +130,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 10,
                         instruction = "Test stage 1. Get ready to experience the countdown and manual continuation gate.",
                         requiresManualProceed = true,
-                        soundProfile = "Gentle Chime"
+                        soundProfileStart = "None",
+                        soundProfileEnd = "Gentle Chime"
                     ),
                     Stage(
                         routineId = testRoutineId,
@@ -134,7 +140,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 12,
                         instruction = "Test stage 2. Let the timer drain to trigger a loud notification sound. The alarm won't advance until you tap button.",
                         requiresManualProceed = true,
-                        soundProfile = "Loud Beep"
+                        soundProfileStart = "None",
+                        soundProfileEnd = "Loud Beep"
                     ),
                     Stage(
                         routineId = testRoutineId,
@@ -143,7 +150,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 8,
                         instruction = "Test stage 3. The demo routine will complete and save a record to local history.",
                         requiresManualProceed = true,
-                        soundProfile = "Victory Gong"
+                        soundProfileStart = "None",
+                        soundProfileEnd = "Victory Gong"
                     )
                 )
             )
@@ -164,7 +172,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 20,
                         instruction = "Set your gaze on an object at least 20 feet (6 meters) away. Let your focus adjust gently.",
                         requiresManualProceed = true,
-                        soundProfile = "Gentle Chime"
+                        soundProfileStart = "None",
+                        soundProfileEnd = "Gentle Chime"
                     ),
                     Stage(
                         routineId = ruleRoutineId,
@@ -173,7 +182,8 @@ class AppRepository(private val appDao: AppDao) {
                         durationSeconds = 15,
                         instruction = "Blink slowly and gently several times to rebuild tear film humidity and release eye lid stiffness.",
                         requiresManualProceed = true,
-                        soundProfile = "Loud Beep"
+                        soundProfileStart = "None",
+                        soundProfileEnd = "Loud Beep"
                     )
                 )
             )
@@ -200,7 +210,8 @@ class AppRepository(private val appDao: AppDao) {
                     durationSeconds = 1500,
                     instruction = "Safely cover the stronger helper eye with your prescribed patch. Engage in near exercises.",
                     requiresManualProceed = true,
-                    soundProfile = "Gentle Chime"
+                    soundProfileStart = "Gentle Chime",
+                    soundProfileEnd = "Gentle Chime"
                 ),
                 Stage(
                     routineId = newPatchRoutineId,
@@ -209,7 +220,8 @@ class AppRepository(private val appDao: AppDao) {
                     durationSeconds = 300,
                     instruction = "Give your eyes a rest. Check distant objects, blink softly and slowly.",
                     requiresManualProceed = true,
-                    soundProfile = "Loud Beep"
+                    soundProfileStart = "None",
+                    soundProfileEnd = "Loud Beep"
                 )
             )
         )

@@ -169,7 +169,7 @@ fun TrainingTimerScreen(
                         tint = MaterialTheme.colorScheme.secondary
                     )
                     Text(
-                        text = "Alarm: ${currentStage.soundProfile}",
+                        text = "Sounds - Start: ${currentStage.soundProfileStart} • End: ${currentStage.soundProfileEnd}",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.secondary

@@ -24,7 +24,8 @@ data class Stage(
     val durationSeconds: Int,
     val instruction: String,
     val requiresManualProceed: Boolean = true,
-    val soundProfile: String = "Loud Beep"
+    val soundProfileStart: String = "Gentle Chime",
+    val soundProfileEnd: String = "Loud Beep"
 )
 
 @Entity(tableName = "sessions")

@@ -54,6 +54,24 @@ fun ProfileScreen(
 
     var saveConfirmationMessage by remember { mutableStateOf<String?>(null) }
 
+    DisposableEffect(nameInput, ageInput, sexInput, soundPrefInput, eyepatchPrefInput, doctorContactInput) {
+        viewModel.onSaveProfileClick = {
+            val age = ageInput.toIntOrNull() ?: 0
+            viewModel.saveProfile(
+                name = nameInput.trim(),
+                age = age,
+                sex = sexInput,
+                soundPref = soundPrefInput,
+                eyepatchPref = eyepatchPrefInput,
+                doctorContact = doctorContactInput.trim()
+            )
+            saveConfirmationMessage = "Profile updated securely! All changes saved offline."
+        }
+        onDispose {
+            viewModel.onSaveProfileClick = null
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -668,31 +686,6 @@ fun ProfileScreen(
             }
         }
 
-        // --- SAVE BUTTON ---
-        Button(
-            onClick = {
-                val age = ageInput.toIntOrNull() ?: 0
-                viewModel.saveProfile(
-                    name = nameInput.trim(),
-                    age = age,
-                    sex = sexInput,
-                    soundPref = soundPrefInput,
-                    eyepatchPref = eyepatchPrefInput,
-                    doctorContact = doctorContactInput.trim()
-                )
-                saveConfirmationMessage = "Profile updated securely! All changes saved offline."
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .testTag("save_profile_btn"),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-            Icon(imageVector = Icons.Default.Save, contentDescription = "Saves profile properties")
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Save Profile Preferences", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }

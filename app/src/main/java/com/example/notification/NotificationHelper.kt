@@ -34,6 +34,7 @@ class NotificationHelper(private val context: Context) {
             ).apply {
                 description = "Shows live remaining duration during eye exercises."
                 setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             manager.createNotificationChannel(timerChannel)
 
@@ -46,6 +47,8 @@ class NotificationHelper(private val context: Context) {
                 description = "Loud alerts and vibrations when a training stage finishes."
                 enableVibration(true)
                 enableLights(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
             }
             manager.createNotificationChannel(alarmChannel)
         }
@@ -96,7 +99,7 @@ class NotificationHelper(private val context: Context) {
         val category = if (state == TrainingState.EXPIRED_WAITING) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_PROGRESS
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(if (state == TrainingState.EXPIRED_WAITING) android.R.drawable.ic_dialog_alert else android.R.drawable.ic_media_play)
+            .setSmallIcon(if (state == TrainingState.EXPIRED_WAITING) android.R.drawable.ic_dialog_alert else android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(routineName)
             .setContentText("$stageName — $timeLeftFormatted")
             .setOngoing(state != TrainingState.EXPIRED_WAITING)
@@ -104,6 +107,7 @@ class NotificationHelper(private val context: Context) {
             .setPriority(priority)
             .setCategory(category)
             .setAutoCancel(false)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         if (state == TrainingState.EXPIRED_WAITING) {
             builder.setDefaults(NotificationCompat.DEFAULT_ALL)

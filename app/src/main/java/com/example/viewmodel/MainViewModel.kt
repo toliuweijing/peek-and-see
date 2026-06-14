@@ -26,6 +26,9 @@ class MainViewModel(
     private val repository: AppRepository
 ) : AndroidViewModel(application) {
 
+    // Dynamic save profile callback registered by the active Profile Screen instance
+    var onSaveProfileClick: (() -> Unit)? = null
+
     // --- USER PROFILE STATE (SharedPreferences) ---
     private val sharedPrefs = application.getSharedPreferences("amblyopia_timer_prefs", Context.MODE_PRIVATE)
 

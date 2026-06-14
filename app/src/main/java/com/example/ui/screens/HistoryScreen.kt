@@ -175,6 +175,10 @@ fun InteractiveHistoryChart(
         activeSessions.sumOf { it.recordedSeconds } / 60
     }
 
+    val totalHoursInPeriod = remember(totalMinutesInPeriod) {
+        totalMinutesInPeriod / 60f
+    }
+
     // Dynamic scale limit
     val maxStackedMinutes = remember(slots) {
         slots.maxOfOrNull { slot -> slot.sumOf { it.durationMinutes.toDouble() } }?.toFloat() ?: 0f
@@ -255,18 +259,46 @@ fun InteractiveHistoryChart(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                val formattedHours = remember(totalHoursInPeriod) {
+                    if (totalHoursInPeriod % 1.0f == 0.0f) {
+                        String.format(Locale.getDefault(), "%.0f", totalHoursInPeriod)
+                    } else if ((totalHoursInPeriod * 10) % 1.0f == 0.0f) {
+                        String.format(Locale.getDefault(), "%.1f", totalHoursInPeriod)
+                    } else {
+                        String.format(Locale.getDefault(), "%.2f", totalHoursInPeriod)
+                    }
+                }
                 Text(
-                    text = String.format("%,d", totalMinutesInPeriod),
+                    text = formattedHours,
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "minutes",
+                    text = if (formattedHours == "1") "hour" else "hours",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
+                if (totalMinutesInPeriod > 0) {
+                    val displayHrs = totalMinutesInPeriod / 60
+                    val displayMins = totalMinutesInPeriod % 60
+                    val textBreakdown = if (displayHrs > 0 && displayMins > 0) {
+                        "(${displayHrs}h ${displayMins}m)"
+                    } else if (displayHrs == 0) {
+                        "(${displayMins}m)"
+                    } else {
+                        ""
+                    }
+                    if (textBreakdown.isNotEmpty()) {
+                        Text(
+                            text = textBreakdown,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
+                        )
+                    }
+                }
             }
             Text(
                 text = when (selectedRange) {
