@@ -12,7 +12,7 @@ class TimerReceiver : BroadcastReceiver() {
         Log.d("TimerReceiver", "Alarm broadcast received at ${System.currentTimeMillis()}")
         Log.d("TimerReceiver", "Alarm broadcast received with action: $action")
         
-        if (action == TimerService.ACTION_STAGE_EXPIRED) {
+        if (action == TimerService.ACTION_STAGE_EXPIRED || action == TimerService.ACTION_TEST_ALARM) {
             // Acquire a temporary partial wake lock for 5 seconds to ensure the service executes.
             var wakeLock: PowerManager.WakeLock? = null
             try {
@@ -25,7 +25,7 @@ class TimerReceiver : BroadcastReceiver() {
             }
 
             val serviceIntent = Intent(context, TimerService::class.java).apply {
-                this.action = TimerService.ACTION_STAGE_EXPIRED
+                this.action = action
             }
             try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {

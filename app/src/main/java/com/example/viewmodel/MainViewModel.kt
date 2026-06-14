@@ -220,14 +220,6 @@ class MainViewModel(
     val completedSessionSummary: StateFlow<Session?> = TimerServiceState.completedSessionSummary.asStateFlow()
     val completedStageRecords: StateFlow<List<StageRecord>> = TimerServiceState.completedStageRecords.asStateFlow()
 
-    init {
-        loadProfilesFromPrefs()
-        // Pre-populate clinic standard templates if database is fresh
-        viewModelScope.launch {
-            repository.prepopulateDefaultRoutinesIfNeeded()
-        }
-    }
-
     // --- SERVICE ACTIONS DISPATCHER ---
     fun startSession(routine: RoutineWithStages) {
         TimerService.startService(getApplication(), routine)
@@ -380,6 +372,126 @@ class MainViewModel(
         viewModelScope.launch {
             val routine = Routine(id = routineId, name = name, description = description, autoRepeat = autoRepeat)
             repository.saveRoutineWithStages(routine, stages)
+        }
+    }
+
+    // --- ACCESSIBLE RELIABILITY SETUP STATE FLOWS ---
+    private val _isNotificationsEnabled = MutableStateFlow(true)
+    val isNotificationsEnabled: StateFlow<Boolean> = _isNotificationsEnabled.asStateFlow()
+
+    private val _isExactAlarmEnabled = MutableStateFlow(true)
+    val isExactAlarmEnabled: StateFlow<Boolean> = _isExactAlarmEnabled.asStateFlow()
+
+    private val _isBatteryUnrestricted = MutableStateFlow(true)
+    val isBatteryUnrestricted: StateFlow<Boolean> = _isBatteryUnrestricted.asStateFlow()
+
+    val testAlarmStatus: StateFlow<String> = TimerServiceState.testAlarmStatus.asStateFlow()
+
+    private val _testAlarmCountdown = MutableStateFlow(0)
+    val testAlarmCountdown: StateFlow<Int> = _testAlarmCountdown.asStateFlow()
+
+    private var countdownJob: kotlinx.coroutines.Job? = null
+
+    fun checkReliabilityPermissions() {
+        val context = getApplication<Application>()
+        try {
+            val notifsEnabled = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+            _isNotificationsEnabled.value = notifsEnabled
+        } catch (e: Exception) {
+            _isNotificationsEnabled.value = false
+        }
+
+        try {
+            val hasExactAlarm = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+            _isExactAlarmEnabled.value = hasExactAlarm
+        } catch (e: Exception) {
+            _isExactAlarmEnabled.value = false
+        }
+
+        try {
+            val hasUnrestrictedBattery = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                powerManager.isIgnoringBatteryOptimizations(context.packageName)
+            } else {
+                true
+            }
+            _isBatteryUnrestricted.value = hasUnrestrictedBattery
+        } catch (e: Exception) {
+            _isBatteryUnrestricted.value = false
+        }
+    }
+
+    fun startTestAlarmTest() {
+        val context = getApplication<Application>()
+        countdownJob?.cancel()
+        _testAlarmCountdown.value = 15
+        TimerServiceState.testAlarmStatus.value = "PENDING"
+        
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        val intent = Intent(context, com.example.notification.TimerReceiver::class.java).apply {
+            action = TimerService.ACTION_TEST_ALARM
+        }
+        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        } else {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = android.app.PendingIntent.getBroadcast(context, 7777, intent, flags)
+        val timeInMillis = System.currentTimeMillis() + 15000
+
+        val showIntent = Intent(context, com.example.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val showPendingIntent = android.app.PendingIntent.getActivity(
+            context,
+            0,
+            showIntent,
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE else android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                val alarmClockInfo = android.app.AlarmManager.AlarmClockInfo(timeInMillis, showPendingIntent)
+                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            } else {
+                alarmManager.setExact(android.app.AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Failed to schedule test alarm", e)
+            TimerServiceState.testAlarmStatus.value = "FAILED"
+            return
+        }
+
+        countdownJob = viewModelScope.launch {
+            for (i in 15 downTo 1) {
+                _testAlarmCountdown.value = i
+                kotlinx.coroutines.delay(1000L)
+            }
+            _testAlarmCountdown.value = 0
+            kotlinx.coroutines.delay(5000L)
+            if (TimerServiceState.testAlarmStatus.value == "PENDING") {
+                TimerServiceState.testAlarmStatus.value = "FAILED"
+            }
+        }
+    }
+
+    fun resetTestAlarm() {
+        countdownJob?.cancel()
+        _testAlarmCountdown.value = 0
+        TimerServiceState.testAlarmStatus.value = "NOT_STARTED"
+    }
+
+    init {
+        loadProfilesFromPrefs()
+        checkReliabilityPermissions()
+        // Pre-populate clinic standard templates if database is fresh
+        viewModelScope.launch {
+            repository.prepopulateDefaultRoutinesIfNeeded()
         }
     }
 }

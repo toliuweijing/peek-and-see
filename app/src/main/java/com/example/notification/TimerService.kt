@@ -24,6 +24,7 @@ object TimerServiceState {
     val currentStageProgress = MutableStateFlow(1.0f)
     val completedSessionSummary = MutableStateFlow<Session?>(null)
     val completedStageRecords = MutableStateFlow<List<StageRecord>>(emptyList())
+    val testAlarmStatus = MutableStateFlow<String>("NOT_STARTED") // "NOT_STARTED", "PENDING", "SUCCESS", "FAILED"
 }
 
 class TimerService : Service() {
@@ -55,6 +56,7 @@ class TimerService : Service() {
         const val ACTION_END_EARLY = "com.example.lazyeyetimer.END_EARLY"
         const val ACTION_REPEAT = "com.example.lazyeyetimer.REPEAT"
         const val ACTION_STAGE_EXPIRED = "com.example.lazyeyetimer.STAGE_EXPIRED"
+        const val ACTION_TEST_ALARM = "com.example.lazyeyetimer.TEST_ALARM"
         
         fun startService(context: Context, routine: RoutineWithStages) {
             TimerServiceState.activeRoutine.value = routine
@@ -102,6 +104,21 @@ class TimerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        if (action == ACTION_TEST_ALARM) {
+            android.util.Log.d("TimerService", "ACTION_TEST_ALARM received at ${System.currentTimeMillis()}")
+            val testNotification = androidx.core.app.NotificationCompat.Builder(applicationContext, NotificationHelper.ALARM_CHANNEL_ID)
+                .setContentTitle("Lock-screen Alarm Test")
+                .setContentText("Test Successful! Alarm received correctly.")
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .setCategory(androidx.core.app.NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
+            startForeground(NotificationHelper.NOTIFICATION_ID, testNotification)
+            handleTestAlarm()
+            return START_NOT_STICKY
+        }
+
         if (action == ACTION_STAGE_EXPIRED) {
             android.util.Log.d("TimerService", "ACTION_STAGE_EXPIRED received at ${System.currentTimeMillis()}")
             
@@ -550,9 +567,29 @@ class TimerService : Service() {
         }
     }
 
+    private fun handleTestAlarm() {
+        TimerServiceState.testAlarmStatus.value = "SUCCESS"
+        alertManager.playLoudAlert("Loud Beep")
+        serviceScope.launch {
+            delay(4000L)
+            alertManager.stopAll()
+            stopSelf()
+        }
+    }
+
     private fun scheduleExpiryAlarm(timeInMillis: Long) {
-        android.util.Log.d("TimerService", "Scheduling setAlarmClock at $timeInMillis")
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                val canScheduleExact = alarmManager.canScheduleExactAlarms()
+                android.util.Log.d("TimerService", "Preparing scheduleExpiryAlarm: canScheduleExactAlarms=$canScheduleExact")
+            } catch (e: Exception) {
+                android.util.Log.e("TimerService", "Error reading canScheduleExactAlarms", e)
+            }
+        }
+
+        android.util.Log.d("TimerService", "Scheduling setAlarmClock at $timeInMillis")
         val intent = Intent(applicationContext, TimerReceiver::class.java).apply {
             action = ACTION_STAGE_EXPIRED
         }
@@ -577,35 +614,28 @@ class TimerService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val alarmClockInfo = AlarmManager.AlarmClockInfo(timeInMillis, showPendingIntent)
                 alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+                android.util.Log.d("TimerService", "setAlarmClock SUCCESS at ${System.currentTimeMillis()}")
             } else {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
                 } else {
                     alarmManager.setExact(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
                 }
+                android.util.Log.d("TimerService", "setExact SUCCESS completed")
             }
         } catch (e: SecurityException) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
-                } else {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
-                }
-            } catch (ex: SecurityException) {
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
-                    } else {
-                        alarmManager.set(AlarmManager.RTC_WAKEUP, timeInMillis, pendingIntent)
-                    }
-                } catch (exc: Exception) {
-                    exc.printStackTrace()
-                }
-            } catch (ex: Exception) {
-                ex.printStackTrace()
-            }
+            android.util.Log.e("TimerService", "Exact alarm scheduling FAILED with SecurityException. Permission revoked. Not silently degrading.", e)
+            // We do not silently fall back. The UI should have warned or blocked the user.
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("TimerService", "Error in scheduleExpiryAlarm", e)
+        }
+    }
+
+    private fun canScheduleScheduleExactAlarmsHelper(alarmManager: AlarmManager): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
         }
     }
 

@@ -37,6 +37,7 @@ fun DashboardScreen(
     onNavigateToCreateRoutine: () -> Unit,
     onNavigateToEditRoutine: (Long) -> Unit,
     onNavigateToHistoryManagement: () -> Unit,
+    onNavigateToReliabilitySetup: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableStateOf(0) } // 0: Home/Training, 1: History, 2: Profile
@@ -47,6 +48,13 @@ fun DashboardScreen(
     val profileName by viewModel.profileName.collectAsStateWithLifecycle()
     val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
     var expandedRoutineId by remember { mutableStateOf<Long?>(null) }
+    
+    val isNotificationsEnabled by viewModel.isNotificationsEnabled.collectAsStateWithLifecycle()
+    val isExactAlarmEnabled by viewModel.isExactAlarmEnabled.collectAsStateWithLifecycle()
+    val isBatteryUnrestricted by viewModel.isBatteryUnrestricted.collectAsStateWithLifecycle()
+
+    val isReliable = isNotificationsEnabled && isExactAlarmEnabled && isBatteryUnrestricted
+    var showUnreliableStartDialog by remember { mutableStateOf<RoutineWithStages?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -172,6 +180,81 @@ fun DashboardScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        item {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isReliable) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                                    } else {
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                                    }
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 1.dp,
+                                    color = if (isReliable) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                    } else {
+                                        MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+                                    }
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isReliable) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                        contentDescription = if (isReliable) "Optimized" else "Warning",
+                                        tint = if (isReliable) MaterialTheme.colorScheme.primary else if (!isNotificationsEnabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (isReliable) "Alarm Delivery Optimized" else "Warning: Config Required",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isReliable) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = if (isReliable) {
+                                                "Your exercise countdowns and stage expiry alerts are fully configured for robust background delivery."
+                                            } else {
+                                                "Battery optimization or notification settings might block locked-screen alerts. Click to fix."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = onNavigateToReliabilitySetup,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isReliable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        modifier = Modifier.testTag("reliability_setup_banner_btn")
+                                    ) {
+                                        Text(
+                                            text = if (isReliable) "Test" else "Resolve",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         if (routines.isEmpty()) {
                             item {
                                 Card(
@@ -404,7 +487,13 @@ fun DashboardScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 Button(
-                                                    onClick = { onStartTraining(routine) },
+                                                    onClick = { 
+                                                        if (isReliable) {
+                                                            onStartTraining(routine)
+                                                        } else {
+                                                            showUnreliableStartDialog = routine
+                                                        }
+                                                    },
                                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                                     shape = RoundedCornerShape(10.dp),
                                                     modifier = Modifier
@@ -469,5 +558,49 @@ fun DashboardScreen(
                 }
             }
         }
+    }
+
+    if (showUnreliableStartDialog != null) {
+        val routine = showUnreliableStartDialog!!
+        AlertDialog(
+            onDismissRequest = { showUnreliableStartDialog = null },
+            title = {
+                Text(
+                    text = "High-Risk Alarm Configuration",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            },
+            text = {
+                Text(
+                    text = "⚠️ Warning: Device restrictions or blocked notifications can cause exercise alarms to be delayed or fail to sound when your screen is locked.\n\nWe strongly recommend visiting the Setup page to disable battery optimization before starting.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnreliableStartDialog = null
+                        onNavigateToReliabilitySetup()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.testTag("dialog_optimize_btn")
+                ) {
+                    Text("Optimize Alerts (Recommended)")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showUnreliableStartDialog = null
+                        onStartTraining(routine)
+                    },
+                    modifier = Modifier.testTag("dialog_skip_btn")
+                ) {
+                    Text("Start Anyway (Unreliable)")
+                }
+            }
+        )
     }
 }

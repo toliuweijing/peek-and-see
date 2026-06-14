@@ -23,12 +23,15 @@ import com.example.ui.screens.RoutineBuilderScreen
 import com.example.ui.screens.TrainingTimerScreen
 import com.example.ui.screens.SummaryScreen
 import com.example.ui.screens.HistoryManagementScreen
+import com.example.ui.screens.ReliabilitySetupScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.MainViewModel
 import com.example.viewmodel.MainViewModelFactory
 import com.example.viewmodel.TrainingState
 
 class MainActivity : ComponentActivity() {
+  private lateinit var viewModel: MainViewModel
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     
@@ -41,7 +44,7 @@ class MainActivity : ComponentActivity() {
     val database = AppDatabase.getDatabase(applicationContext)
     val repository = AppRepository(database.appDao())
     val factory = MainViewModelFactory(application, repository)
-    val viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
+    viewModel = ViewModelProvider(this, factory)[MainViewModel::class.java]
 
     handleIncomingIntent(intent, viewModel)
 
@@ -50,6 +53,13 @@ class MainActivity : ComponentActivity() {
       MyApplicationTheme {
         MainAppNavHost(viewModel = viewModel)
       }
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    if (::viewModel.isInitialized) {
+      viewModel.checkReliabilityPermissions()
     }
   }
 
@@ -76,9 +86,12 @@ fun MainAppNavHost(viewModel: MainViewModel) {
 
     // Smooth state-driven transitions for timer lifecycle (Idle -> Training -> Summary)
     LaunchedEffect(trainingState) {
+        val currentRoute = navController.currentDestination?.route
+        if (currentRoute == null) return@LaunchedEffect // Guard against navigating before NavGraph is initialized
+
         when (trainingState) {
             TrainingState.RUNNING -> {
-                if (navController.currentDestination?.route != "training") {
+                if (currentRoute != "training") {
                     navController.navigate("training") {
                         popUpTo("dashboard") { saveState = true }
                         launchSingleTop = true
@@ -86,7 +99,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 }
             }
             TrainingState.COMPLETED -> {
-                if (navController.currentDestination?.route != "summary") {
+                if (currentRoute != "summary") {
                     navController.navigate("summary") {
                         popUpTo("dashboard") { saveState = true }
                         launchSingleTop = true
@@ -94,7 +107,7 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 }
             }
             TrainingState.IDLE -> {
-                if (navController.currentDestination?.route != "dashboard") {
+                if (currentRoute != "dashboard") {
                     navController.navigate("dashboard") {
                         popUpTo("dashboard") { inclusive = true }
                     }
@@ -123,6 +136,9 @@ fun MainAppNavHost(viewModel: MainViewModel) {
                 },
                 onNavigateToHistoryManagement = {
                     navController.navigate("history_management")
+                },
+                onNavigateToReliabilitySetup = {
+                    navController.navigate("reliability_setup")
                 }
             )
         }
@@ -170,6 +186,15 @@ fun MainAppNavHost(viewModel: MainViewModel) {
 
         composable("history_management") {
             HistoryManagementScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable("reliability_setup") {
+            ReliabilitySetupScreen(
                 viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
