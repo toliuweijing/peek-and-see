@@ -63,7 +63,7 @@ fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -73,47 +73,14 @@ fun DashboardScreen(
                 ) {
                     Text(
                         text = when (selectedTab) {
-                            0 -> {
-                                if (profileName.isNotBlank() && profileName != "Amblyopia Patient") {
-                                    "$profileName's Drills"
-                                } else {
-                                    "Clinician Drills"
-                                }
-                            }
-                            1 -> "Compliance Logs"
-                            else -> "Lazy Eye Profile"
+                            0 -> "Your Routines"
+                            1 -> "History"
+                            else -> "Profile"
                         },
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
-                    Text(
-                        text = when (selectedTab) {
-                            0 -> "Therapeutic gymnastic routines for active eye focus"
-                            1 -> "Track historic on-device workout logs & adherence"
-                            else -> "Configure offline diagnostics & audio alarm tones"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (selectedTab == 2) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Button(
-                        onClick = { viewModel.onSaveProfileClick?.invoke() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("save_profile_btn"),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Save,
-                            contentDescription = "Save profile info",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    }
                 }
             }
         },
@@ -129,21 +96,21 @@ fun DashboardScreen(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     icon = { Icon(imageVector = if (selectedTab == 0) Icons.Default.Home else Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Exercises", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text("Home", style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("nav_tab_home")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     icon = { Icon(imageVector = if (selectedTab == 1) Icons.Default.History else Icons.Default.History, contentDescription = null) },
-                    label = { Text("Compliance", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text("History", style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("nav_tab_history")
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
                     icon = { Icon(imageVector = if (selectedTab == 2) Icons.Default.Person else Icons.Default.Person, contentDescription = null) },
-                    label = { Text("Diagnostics", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text("Profile", style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.testTag("nav_tab_profile")
                 )
             }
@@ -177,14 +144,14 @@ fun DashboardScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background),
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         item {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    .padding(vertical = 4.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isReliable) {
                                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
@@ -192,7 +159,7 @@ fun DashboardScreen(
                                         MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
                                     }
                                 ),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(24.dp),
                                 border = androidx.compose.foundation.BorderStroke(
                                     width = 1.dp,
                                     color = if (isReliable) {
@@ -205,9 +172,9 @@ fun DashboardScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
+                                        .padding(20.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
                                     Icon(
                                         imageVector = if (isReliable) Icons.Default.CheckCircle else Icons.Default.Warning,
@@ -241,8 +208,8 @@ fun DashboardScreen(
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = if (isReliable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                                         ),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                                         modifier = Modifier.testTag("reliability_setup_banner_btn")
                                     ) {
                                         Text(
@@ -260,7 +227,7 @@ fun DashboardScreen(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                                        .padding(vertical = 8.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)),
                                     shape = RoundedCornerShape(24.dp),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))

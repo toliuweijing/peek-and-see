@@ -54,22 +54,16 @@ fun ProfileScreen(
 
     var saveConfirmationMessage by remember { mutableStateOf<String?>(null) }
 
-    DisposableEffect(nameInput, ageInput, sexInput, soundPrefInput, eyepatchPrefInput, doctorContactInput) {
-        viewModel.onSaveProfileClick = {
-            val age = ageInput.toIntOrNull() ?: 0
-            viewModel.saveProfile(
-                name = nameInput.trim(),
-                age = age,
-                sex = sexInput,
-                soundPref = soundPrefInput,
-                eyepatchPref = eyepatchPrefInput,
-                doctorContact = doctorContactInput.trim()
-            )
-            saveConfirmationMessage = "Profile updated securely! All changes saved offline."
-        }
-        onDispose {
-            viewModel.onSaveProfileClick = null
-        }
+    LaunchedEffect(nameInput, ageInput, sexInput, soundPrefInput, eyepatchPrefInput, doctorContactInput) {
+        val age = ageInput.toIntOrNull() ?: 0
+        viewModel.saveProfile(
+            name = nameInput.trim(),
+            age = age,
+            sex = sexInput,
+            soundPref = soundPrefInput,
+            eyepatchPref = eyepatchPrefInput,
+            doctorContact = doctorContactInput.trim()
+        )
     }
 
     Column(
@@ -77,24 +71,12 @@ fun ProfileScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
-            .padding(16.dp)
+            .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp)
             .testTag("profile_screen_root"),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         // --- HEADER ---
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "Patient Profile",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Configure patient diagnostics, medical goals, and alarm sound choices.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        // (Removed to align with global topbar logic)
 
         // --- USER TRUST & ON-DEVICE SECURE BADGE ---
         Card(
@@ -102,7 +84,7 @@ fun ProfileScreen(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
             ),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(24.dp)
         ) {
             Row(
                 modifier = Modifier.padding(14.dp),
@@ -134,6 +116,7 @@ fun ProfileScreen(
         // --- FAMILY & PATIENTS PROFILES SELECTION CARD ---
         Card(
             modifier = Modifier.fillMaxWidth().testTag("profile_profiles_card"),
+            shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
@@ -187,7 +170,7 @@ fun ProfileScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable {
                                     viewModel.selectActiveProfile(p.id)
                                     saveConfirmationMessage = "Switched active profile to ${p.name}!"
