@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -44,6 +45,11 @@ fun SummaryScreen(
     var notesText by remember { mutableStateOf("") }
     var notePlaceholderSet by remember { mutableStateOf(false) }
 
+    BackHandler {
+        viewModel.finalizeAndSaveSession(notesText)
+        onNavigateBack()
+    }
+
     val activeSummary = summary ?: return
 
     // If pre-populated, pull the default notes, but allow editing
@@ -64,19 +70,33 @@ fun SummaryScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                 },
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            viewModel.finalizeAndSaveSession(notesText)
+                            onNavigateBack()
+                        },
+                        modifier = Modifier.testTag("back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Navigate back",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
                 actions = {
-                    TextButton(
+                    IconButton(
                         onClick = {
                             viewModel.discardSessionSummary()
                             onNavigateBack()
                         },
-                        modifier = Modifier.testTag("discard_summary_button")
+                        modifier = Modifier.testTag("delete_summary_button")
                     ) {
-                        Text(
-                            text = "Discard",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.Bold
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete from history",
+                            tint = MaterialTheme.colorScheme.error
                         )
                     }
                 },
@@ -305,20 +325,23 @@ fun SummaryScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
-                    onClick = {
-                        viewModel.finalizeAndSaveSession(notesText)
-                        onNavigateBack()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("save_and_finish_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Default.SaveAlt, contentDescription = "Saves training workout results")
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Auto-saved",
+                        tint = Color(0xFF2E7D32),
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save & Complete Session Logs", fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Session auto-saved to history",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 OutlinedButton(
