@@ -56,6 +56,16 @@ fun DashboardScreen(
     val isReliable = isNotificationsEnabled && isExactAlarmEnabled && isBatteryUnrestricted
     var showUnreliableStartDialog by remember { mutableStateOf<RoutineWithStages?>(null) }
 
+    val sharedPreferences = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
+    var isOptimizedBannerDismissed by remember { mutableStateOf(sharedPreferences.getBoolean("is_optimized_banner_dismissed", false)) }
+
+    LaunchedEffect(isReliable) {
+        if (!isReliable) {
+            isOptimizedBannerDismissed = false
+            sharedPreferences.edit().putBoolean("is_optimized_banner_dismissed", false).apply()
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -147,85 +157,130 @@ fun DashboardScreen(
                         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        item {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isReliable) {
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-                                    } else {
-                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
-                                    }
-                                ),
-                                shape = RoundedCornerShape(24.dp),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    width = 1.dp,
-                                    color = if (isReliable) {
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                    } else {
-                                        MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
-                                    }
-                                )
-                            ) {
-                                Row(
+                        if (!isReliable || !isOptimizedBannerDismissed) {
+                            item(key = "optimized_banner") {
+                                Card(
                                     modifier = Modifier
+                                        .animateItem()
                                         .fillMaxWidth()
-                                        .padding(20.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isReliable) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                        contentDescription = if (isReliable) "Optimized" else "Warning",
-                                        tint = if (isReliable) MaterialTheme.colorScheme.primary else if (!isNotificationsEnabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(24.dp)
+                                        .padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isReliable) {
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                                        } else {
+                                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                                        }
+                                    ),
+                                    shape = RoundedCornerShape(24.dp),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (isReliable) {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                        } else {
+                                            MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+                                        }
                                     )
-                                    
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (isReliable) "Alarm Delivery Optimized" else "Warning: Config Required",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isReliable) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = if (isReliable) {
-                                                "Your exercise countdowns and stage expiry alerts are fully configured for robust background delivery."
-                                            } else {
-                                                "Battery optimization or notification settings might block locked-screen alerts. Click to fix."
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            lineHeight = 14.sp
-                                        )
-                                    }
+                                ) {
+                                    Box(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(20.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isReliable) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                                contentDescription = if (isReliable) "Optimized" else "Warning",
+                                                tint = if (isReliable) MaterialTheme.colorScheme.primary else if (!isNotificationsEnabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (isReliable) "Alarm Delivery Optimized" else "Warning: Config Required",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isReliable) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = if (isReliable) {
+                                                        "Your exercise countdowns and stage expiry alerts are fully configured for robust background delivery."
+                                                    } else {
+                                                        "Battery optimization or notification settings might block locked-screen alerts. Click to fix."
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    lineHeight = 14.sp
+                                                )
+                                            }
 
-                                    Button(
-                                        onClick = onNavigateToReliabilitySetup,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isReliable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                        ),
-                                        shape = RoundedCornerShape(16.dp),
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                        modifier = Modifier.testTag("reliability_setup_banner_btn")
-                                    ) {
-                                        Text(
-                                            text = if (isReliable) "Test" else "Resolve",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                            if (isReliable) {
+                                                Button(
+                                                    onClick = onNavigateToReliabilitySetup,
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.primary
+                                                    ),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                                    modifier = Modifier.testTag("reliability_setup_banner_btn")
+                                                ) {
+                                                    Text(
+                                                        text = "Test",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            } else {
+                                                Button(
+                                                    onClick = onNavigateToReliabilitySetup,
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.error
+                                                    ),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                                    modifier = Modifier.testTag("reliability_setup_banner_btn")
+                                                ) {
+                                                    Text(
+                                                        text = "Resolve",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (isReliable) {
+                                            IconButton(
+                                                onClick = {
+                                                    isOptimizedBannerDismissed = true
+                                                    sharedPreferences.edit().putBoolean("is_optimized_banner_dismissed", true).apply()
+                                                },
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(2.dp)
+                                                    .size(28.dp)
+                                                    .testTag("dismiss_optimized_banner_btn")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Dismiss",
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
 
                         if (routines.isEmpty()) {
-                            item {
+                            item(key = "empty_state") {
                                 Card(
                                     modifier = Modifier
+                                        .animateItem()
                                         .fillMaxWidth()
                                         .padding(vertical = 8.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)),
@@ -278,6 +333,7 @@ fun DashboardScreen(
 
                             Card(
                                 modifier = Modifier
+                                    .animateItem()
                                     .fillMaxWidth()
                                     .clickable {
                                         expandedRoutineId = if (isExpanded) null else routine.routine.id
