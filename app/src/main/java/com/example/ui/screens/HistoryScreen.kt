@@ -67,56 +67,27 @@ fun getRoutineColor(routineId: Long): Color {
 fun InteractiveHistoryChart(
     viewModel: MainViewModel,
     selectedRoutineIds: Set<Long>,
+    selectedRange: HistoryRange,
+    onRangeSelected: (HistoryRange) -> Unit,
+    timeOffset: Int,
+    onTimeOffsetChanged: (Int) -> Unit,
+    referenceCalendar: Calendar,
+    activeSessionsInPeriod: List<Session>,
     onToggleRoutine: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val allDatabaseRoutines by viewModel.routines.collectAsStateWithLifecycle()
-    var selectedRange by remember { mutableStateOf(HistoryRange.DAY) }
-
-    val filteredSessions = remember(sessions, selectedRoutineIds) {
-        sessions.filter { selectedRoutineIds.contains(it.routineId) }
-    }
-
-    // Organize dates & times securely
-    val todaySessions = remember(filteredSessions) {
-        val calNow = Calendar.getInstance()
-        val todayYear = calNow.get(Calendar.YEAR)
-        val todayDay = calNow.get(Calendar.DAY_OF_YEAR)
-        filteredSessions.filter {
-            val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
-            c.get(Calendar.YEAR) == todayYear && c.get(Calendar.DAY_OF_YEAR) == todayDay
-        }
-    }
-
-    val currentWeekSessions = remember(filteredSessions) {
-        val calNow = Calendar.getInstance()
-        val currentYear = calNow.get(Calendar.YEAR)
-        val currentWeek = calNow.get(Calendar.WEEK_OF_YEAR)
-        filteredSessions.filter {
-            val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
-            c.get(Calendar.YEAR) == currentYear && c.get(Calendar.WEEK_OF_YEAR) == currentWeek
-        }
-    }
-
-    val currentMonthSessions = remember(filteredSessions) {
-        val calNow = Calendar.getInstance()
-        val currentYear = calNow.get(Calendar.YEAR)
-        val currentMonth = calNow.get(Calendar.MONTH)
-        filteredSessions.filter {
-            val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
-            c.get(Calendar.YEAR) == currentYear && c.get(Calendar.MONTH) == currentMonth
-        }
-    }
 
     // Slots & segments calculation
-    val maxDays = remember { Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_MONTH) }
+    val maxDays = remember(referenceCalendar) { referenceCalendar.getActualMaximum(Calendar.DAY_OF_MONTH) }
+
     
-    val slots = remember(selectedRange, sessions, todaySessions, currentWeekSessions, currentMonthSessions) {
+    val slots = remember(selectedRange, sessions, activeSessionsInPeriod) {
         when (selectedRange) {
             HistoryRange.DAY -> {
                 List(24) { hour ->
-                    val hourSessions = todaySessions.filter {
+                    val hourSessions = activeSessionsInPeriod.filter {
                         val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
                         c.get(Calendar.HOUR_OF_DAY) == hour
                     }
@@ -138,7 +109,7 @@ fun InteractiveHistoryChart(
                         5 -> Calendar.SATURDAY
                         else -> Calendar.SUNDAY
                     }
-                    val daySessions = currentWeekSessions.filter {
+                    val daySessions = activeSessionsInPeriod.filter {
                         val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
                         c.get(Calendar.DAY_OF_WEEK) == targetDayOfWeek
                     }
@@ -152,7 +123,7 @@ fun InteractiveHistoryChart(
             HistoryRange.MONTH -> {
                 List(maxDays) { dayIdx ->
                     val dayNum = dayIdx + 1
-                    val daySessions = currentMonthSessions.filter {
+                    val daySessions = activeSessionsInPeriod.filter {
                         val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
                         c.get(Calendar.DAY_OF_MONTH) == dayNum
                     }
@@ -166,13 +137,8 @@ fun InteractiveHistoryChart(
         }
     }
 
-    val totalMinutesInPeriod = remember(selectedRange, sessions, todaySessions, currentWeekSessions, currentMonthSessions) {
-        val activeSessions = when (selectedRange) {
-            HistoryRange.DAY -> todaySessions
-            HistoryRange.WEEK -> currentWeekSessions
-            HistoryRange.MONTH -> currentMonthSessions
-        }
-        activeSessions.sumOf { it.recordedSeconds } / 60
+    val totalMinutesInPeriod = remember(activeSessionsInPeriod) {
+        activeSessionsInPeriod.sumOf { it.recordedSeconds } / 60
     }
 
     val totalHoursInPeriod = remember(totalMinutesInPeriod) {
@@ -221,16 +187,19 @@ fun InteractiveHistoryChart(
                         HistoryRange.WEEK -> "Week"
                         HistoryRange.MONTH -> "Month"
                     }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(17.dp))
-                            .background(
-                                if (isSelected) MaterialTheme.colorScheme.primary 
-                                else Color.Transparent
-                            )
-                            .clickable { selectedRange = range }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(17.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary 
+                                    else Color.Transparent
+                                )
+                                .clickable { 
+                                onRangeSelected(range)
+                                onTimeOffsetChanged(0)
+                            }
                             .testTag("chart_tab_${range.name.lowercase()}"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -241,6 +210,74 @@ fun InteractiveHistoryChart(
                             fontSize = 12.sp
                         )
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { onTimeOffsetChanged(timeOffset - 1) },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowLeft, 
+                        contentDescription = "Previous time period",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                
+                val dateStr = remember(selectedRange, referenceCalendar, timeOffset) {
+                    when (selectedRange) {
+                        HistoryRange.DAY -> {
+                            if (timeOffset == 0) "Today"
+                            else if (timeOffset == -1) "Yesterday"
+                            else SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(referenceCalendar.time)
+                        }
+                        HistoryRange.WEEK -> {
+                            val startCal = referenceCalendar.clone() as Calendar
+                            startCal.set(Calendar.DAY_OF_WEEK, startCal.firstDayOfWeek)
+                            val endCal = referenceCalendar.clone() as Calendar
+                            endCal.set(Calendar.DAY_OF_WEEK, endCal.firstDayOfWeek)
+                            endCal.add(Calendar.DAY_OF_YEAR, 6)
+                            
+                            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
+                            val startStr = sdf.format(startCal.time)
+                            val endStr = sdf.format(endCal.time)
+                            
+                            if (timeOffset == 0) "This Week"
+                            else if (timeOffset == -1) "Last Week"
+                            else "$startStr - $endStr"
+                        }
+                        HistoryRange.MONTH -> {
+                            if (timeOffset == 0) "This Month"
+                            else if (timeOffset == -1) "Last Month"
+                            else SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(referenceCalendar.time)
+                        }
+                    }
+                }
+                
+                Text(
+                    text = dateStr,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                
+                IconButton(
+                    onClick = { onTimeOffsetChanged(timeOffset + 1) }, 
+                    enabled = timeOffset < 0,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowRight, 
+                        contentDescription = "Next time period",
+                        tint = if (timeOffset < 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                    )
                 }
             }
 
@@ -302,7 +339,7 @@ fun InteractiveHistoryChart(
             }
             Text(
                 text = when (selectedRange) {
-                    HistoryRange.DAY -> "Recorded sessions for today"
+                    HistoryRange.DAY -> if (timeOffset == 0) "Recorded sessions for today" else "Recorded sessions for selected day"
                     HistoryRange.WEEK -> "Consolidated weekly tracking"
                     HistoryRange.MONTH -> "Historic monthly trend overview"
                 },
@@ -612,6 +649,46 @@ fun HistoryScreen(
         sessions.filter { selectedRoutineIds.contains(it.routineId) }
     }
 
+    var selectedRange by remember { mutableStateOf(HistoryRange.DAY) }
+    var timeOffset by remember { mutableStateOf(0) }
+
+    val referenceCalendar = remember(selectedRange, timeOffset) {
+        Calendar.getInstance().apply {
+            when (selectedRange) {
+                HistoryRange.DAY -> add(Calendar.DAY_OF_YEAR, timeOffset)
+                HistoryRange.WEEK -> add(Calendar.WEEK_OF_YEAR, timeOffset)
+                HistoryRange.MONTH -> add(Calendar.MONTH, timeOffset)
+            }
+        }
+    }
+
+    val activeSessionsInPeriod = remember(filteredSessions, selectedRange, referenceCalendar) {
+        val targetYear = referenceCalendar.get(Calendar.YEAR)
+        when (selectedRange) {
+            HistoryRange.DAY -> {
+                val targetDay = referenceCalendar.get(Calendar.DAY_OF_YEAR)
+                filteredSessions.filter {
+                    val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+                    c.get(Calendar.YEAR) == targetYear && c.get(Calendar.DAY_OF_YEAR) == targetDay
+                }
+            }
+            HistoryRange.WEEK -> {
+                val targetWeek = referenceCalendar.get(Calendar.WEEK_OF_YEAR)
+                filteredSessions.filter {
+                    val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+                    c.get(Calendar.YEAR) == targetYear && c.get(Calendar.WEEK_OF_YEAR) == targetWeek
+                }
+            }
+            HistoryRange.MONTH -> {
+                val targetMonth = referenceCalendar.get(Calendar.MONTH)
+                filteredSessions.filter {
+                    val c = Calendar.getInstance().apply { timeInMillis = it.startedAt }
+                    c.get(Calendar.YEAR) == targetYear && c.get(Calendar.MONTH) == targetMonth
+                }
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -673,6 +750,12 @@ fun HistoryScreen(
                 InteractiveHistoryChart(
                     viewModel = viewModel,
                     selectedRoutineIds = selectedRoutineIds,
+                    selectedRange = selectedRange,
+                    onRangeSelected = { selectedRange = it },
+                    timeOffset = timeOffset,
+                    onTimeOffsetChanged = { timeOffset = it },
+                    referenceCalendar = referenceCalendar,
+                    activeSessionsInPeriod = activeSessionsInPeriod,
                     onToggleRoutine = { routineId ->
                         selectedRoutineIds = if (selectedRoutineIds.contains(routineId)) {
                             selectedRoutineIds - routineId
@@ -696,7 +779,7 @@ fun HistoryScreen(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text(
-                        text = "Session Drill Logs (${filteredSessions.size})",
+                        text = "Session Drill Logs (${activeSessionsInPeriod.size})",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.secondary
@@ -704,7 +787,7 @@ fun HistoryScreen(
                 }
             }
 
-            if (filteredSessions.isEmpty()) {
+            if (activeSessionsInPeriod.isEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth().testTag("empty_history_card"),
@@ -714,7 +797,7 @@ fun HistoryScreen(
                             text = if (sessions.isEmpty()) {
                                 "No clinical therapy sessions completed yet. Initiate a timer from the Home tab to build compliance history."
                             } else {
-                                "No sessions match the selected routine filters. Toggle them back on to view their drill logs."
+                                "No sessions match the selected timeline and filter routing. Toggle them back on to view results."
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -727,7 +810,7 @@ fun HistoryScreen(
                 }
             }
 
-            items(filteredSessions, key = { it.id }) { session ->
+            items(activeSessionsInPeriod, key = { it.id }) { session ->
                 val formattedDate = remember(session.startedAt) {
                     val sdf = SimpleDateFormat("MMM dd, yyyy • h:mm a", Locale.getDefault())
                     sdf.format(Date(session.startedAt))
