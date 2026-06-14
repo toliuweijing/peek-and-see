@@ -363,10 +363,11 @@ class MainViewModel(
         }
     }
 
-    fun createOrUpdateRoutine(name: String, description: String, autoRepeat: Boolean, stages: List<Stage>) {
+    fun createOrUpdateRoutine(name: String, description: String, autoRepeat: Boolean, stages: List<Stage>, onSaved: ((Long) -> Unit)? = null) {
         viewModelScope.launch {
             val routine = Routine(name = name, description = description, autoRepeat = autoRepeat)
-            repository.saveRoutineWithStages(routine, stages)
+            val newId = repository.saveRoutineWithStages(routine, stages)
+            onSaved?.invoke(newId)
         }
     }
 

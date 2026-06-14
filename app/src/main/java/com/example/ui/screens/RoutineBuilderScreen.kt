@@ -100,6 +100,50 @@ fun RoutineBuilderScreen(
         hasInitialized = true
     }
 
+    var currentRoutineId by remember { mutableStateOf(routineId) }
+
+    LaunchedEffect(
+        routineName,
+        routineDescription,
+        autoRepeat,
+        editableStages.toList()
+    ) {
+        if (!hasInitialized) return@LaunchedEffect
+        
+        // Wait for typing to pause
+        kotlinx.coroutines.delay(500)
+        
+        // Skip completely empty un-named routines
+        if (routineName.trim().isEmpty() && (currentRoutineId == null || currentRoutineId == 0L)) {
+            return@LaunchedEffect
+        }
+        
+        val dbStages = editableStages.mapIndexed { idx, stage ->
+            val mins = stage.durationMinutes.toIntOrNull() ?: 0
+            val secs = stage.durationSeconds.toIntOrNull() ?: 0
+            val totalSecs = (mins * 60) + secs
+
+            Stage(
+                routineId = currentRoutineId ?: 0,
+                stageOrder = idx + 1,
+                name = stage.name,
+                durationSeconds = if (totalSecs > 0) totalSecs else 10,
+                instruction = stage.instruction,
+                requiresManualProceed = stage.requiresManualProceed,
+                soundProfileStart = stage.soundProfileStart,
+                soundProfileEnd = stage.soundProfileEnd
+            )
+        }
+
+        if (currentRoutineId == null || currentRoutineId == 0L) {
+            viewModel.createOrUpdateRoutine(routineName, routineDescription, autoRepeat, dbStages) { newId ->
+                currentRoutineId = newId
+            }
+        } else {
+            viewModel.updateRoutineWithDetails(currentRoutineId!!, routineName, routineDescription, autoRepeat, dbStages)
+        }
+    }
+
     var validationError by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -479,66 +523,7 @@ fun RoutineBuilderScreen(
                 }
             }
 
-            // --- SAVE / NOTIFICATION DISPATCH BAR ---
-            if (validationError != null) {
-                Text(
-                    text = validationError!!,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
-
-            Button(
-                onClick = {
-                    // Validations
-                    if (routineName.trim().isEmpty()) {
-                        validationError = "Please insert a valid Routine title."
-                        return@Button
-                    }
-                    if (editableStages.any { it.name.trim().isEmpty() }) {
-                        validationError = "Please write stage names for all intervals."
-                        return@Button
-                    }
-
-                    // Map editable stages to database entity
-                    val dbStages = editableStages.mapIndexed { idx, stage ->
-                        val mins = stage.durationMinutes.toIntOrNull() ?: 0
-                        val secs = stage.durationSeconds.toIntOrNull() ?: 0
-                        val totalSecs = (mins * 60) + secs
-
-                        Stage(
-                            routineId = routineId ?: 0,
-                            stageOrder = idx + 1,
-                            name = stage.name,
-                            durationSeconds = if (totalSecs > 0) totalSecs else 10, // Min fallback
-                            instruction = stage.instruction,
-                            requiresManualProceed = stage.requiresManualProceed,
-                            soundProfileStart = stage.soundProfileStart,
-                            soundProfileEnd = stage.soundProfileEnd
-                        )
-                    }
-
-                    if (routineId == null || routineId == 0L) {
-                        viewModel.createOrUpdateRoutine(routineName, routineDescription, autoRepeat, dbStages)
-                    } else {
-                        viewModel.updateRoutineWithDetails(routineId, routineName, routineDescription, autoRepeat, dbStages)
-                    }
-
-                    onNavigateBack()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("save_routine_button"),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) {
-                Icon(imageVector = Icons.Default.Save, contentDescription = "Commit routine configuration")
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Save Exercise Routine", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-
+            // --- BOTTOM PADDING ---
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
