@@ -61,6 +61,7 @@ class AlertManager(private val context: Context) {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
                 ringtone?.play()
+                android.util.Log.d("AlertManager", "Ringtone play() called at ${System.currentTimeMillis()}")
                 vibrateAlert()
             } catch (ex: Exception) {
                 ex.printStackTrace()
@@ -85,6 +86,7 @@ class AlertManager(private val context: Context) {
     }
 
     fun stopAll() {
+        android.util.Log.d("AlertManager", "stopAll() called at ${System.currentTimeMillis()}")
         try {
             ringtone?.stop()
         } catch (e: Exception) {

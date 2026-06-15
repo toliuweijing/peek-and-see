@@ -281,6 +281,9 @@ class TimerService : Service() {
 
     private fun onStageExpired() {
         if (TimerServiceState.trainingState.value != TrainingState.RUNNING) return
+        
+        // Prevent concurrent/re-entrant triggers from ticker while processing expiration
+        TimerServiceState.trainingState.value = TrainingState.EXPIRED_WAITING
         cancelExpiryAlarm()
         
         val routine = TimerServiceState.activeRoutine.value ?: return
@@ -306,7 +309,6 @@ class TimerService : Service() {
         alertManager.playLoudAlert(stage.soundProfileEnd)
         
         if (stage.requiresManualProceed) {
-            TimerServiceState.trainingState.value = TrainingState.EXPIRED_WAITING
             TimerServiceState.currentStageRemainingSeconds.value = 0
             TimerServiceState.currentStageProgress.value = 0f
 
@@ -364,6 +366,7 @@ class TimerService : Service() {
     }
 
     private fun handleRepeat() {
+        alertManager.stopAll()
         val routine = TimerServiceState.activeRoutine.value ?: return
         val currentIdx = TimerServiceState.currentStageIndex.value
         val stage = routine.sortedStages.getOrNull(currentIdx) ?: return
@@ -373,6 +376,7 @@ class TimerService : Service() {
     }
 
     private fun handleNext() {
+        alertManager.stopAll()
         val routine = TimerServiceState.activeRoutine.value ?: return
         val nextIdx = TimerServiceState.currentStageIndex.value + 1
         
@@ -394,6 +398,7 @@ class TimerService : Service() {
     }
 
     private fun handleSkip() {
+        alertManager.stopAll()
         val routine = TimerServiceState.activeRoutine.value ?: return
         val currentIdx = TimerServiceState.currentStageIndex.value
         val stage = routine.sortedStages.getOrNull(currentIdx)
