@@ -10,6 +10,13 @@ interface AppDao {
     @Query("SELECT * FROM routines ORDER BY createdAt DESC")
     fun getRoutinesWithStages(): Flow<List<RoutineWithStages>>
 
+    @Query("SELECT * FROM routines")
+    suspend fun getAllRoutinesSync(): List<Routine>
+
+    @Query("SELECT * FROM stages")
+    suspend fun getAllStagesSync(): List<Stage>
+
+
     @Transaction
     @Query("SELECT * FROM routines WHERE id = :id LIMIT 1")
     fun getRoutineWithStages(id: Long): Flow<RoutineWithStages?>
@@ -31,6 +38,16 @@ interface AppDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStages(stages: List<Stage>)
+
+    @Query("DELETE FROM routines")
+    suspend fun deleteAllRoutines()
+
+    @Query("DELETE FROM stages")
+    suspend fun deleteAllStages()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRoutinesSync(routines: List<Routine>)
+
 
     @Query("DELETE FROM stages WHERE routineId = :routineId")
     suspend fun deleteStagesForRoutine(routineId: Long)
@@ -62,6 +79,10 @@ interface AppDao {
     @Query("SELECT * FROM sessions ORDER BY startedAt DESC")
     fun getAllSessions(): Flow<List<Session>>
 
+    @Query("SELECT * FROM sessions")
+    suspend fun getAllSessionsSync(): List<Session>
+
+
     @Query("SELECT * FROM sessions WHERE id = :id LIMIT 1")
     suspend fun getSessionById(id: Long): Session?
 
@@ -80,9 +101,25 @@ interface AppDao {
     @Query("DELETE FROM stage_records WHERE sessionId = :sessionId")
     suspend fun deleteStageRecordsBySessionId(sessionId: Long)
 
+    @Query("DELETE FROM sessions")
+    suspend fun deleteAllSessions()
+
+    @Query("DELETE FROM stage_records")
+    suspend fun deleteAllStageRecords()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSessionsSync(sessions: List<Session>)
+
     // --- STAGE RECORDS ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStageRecord(record: StageRecord)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStageRecordsSync(records: List<StageRecord>)
+
+    @Query("SELECT * FROM stage_records")
+    suspend fun getAllStageRecordsSync(): List<StageRecord>
+
 
     @Query("SELECT * FROM stage_records WHERE sessionId = :sessionId ORDER BY stageOrder ASC")
     fun getStageRecordsForSession(sessionId: Long): Flow<List<StageRecord>>

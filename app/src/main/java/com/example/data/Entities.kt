@@ -4,8 +4,10 @@ import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import com.squareup.moshi.JsonClass
 
 @Entity(tableName = "routines")
+@JsonClass(generateAdapter = true)
 data class Routine(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -16,6 +18,7 @@ data class Routine(
 )
 
 @Entity(tableName = "stages")
+@JsonClass(generateAdapter = true)
 data class Stage(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val routineId: Long,
@@ -29,6 +32,7 @@ data class Stage(
 )
 
 @Entity(tableName = "sessions")
+@JsonClass(generateAdapter = true)
 data class Session(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val routineId: Long,
@@ -43,6 +47,7 @@ data class Session(
 )
 
 @Entity(tableName = "stage_records")
+@JsonClass(generateAdapter = true)
 data class StageRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sessionId: Long,

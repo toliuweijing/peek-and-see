@@ -49,6 +49,24 @@ class AppRepository(private val appDao: AppDao) {
         return appDao.getStageRecordsForSessionSync(sessionId)
     }
 
+    suspend fun getAllRoutinesSync(): List<Routine> = appDao.getAllRoutinesSync()
+    suspend fun getAllStagesSync(): List<Stage> = appDao.getAllStagesSync()
+    suspend fun getAllSessionsSync(): List<Session> = appDao.getAllSessionsSync()
+    suspend fun getAllStageRecordsSync(): List<StageRecord> = appDao.getAllStageRecordsSync()
+
+    suspend fun importSnapshotData(snapshot: AppSnapshot) {
+        appDao.deleteAllRoutines()
+        appDao.deleteAllStages()
+        appDao.deleteAllSessions()
+        appDao.deleteAllStageRecords()
+
+        appDao.insertRoutinesSync(snapshot.routines)
+        appDao.insertStages(snapshot.stages)
+        appDao.insertSessionsSync(snapshot.sessions)
+        appDao.insertStageRecordsSync(snapshot.stageRecords)
+    }
+
+
     suspend fun prepopulateDefaultRoutinesIfNeeded() {
         val existing = allRoutinesWithStages.first()
         if (existing.isEmpty()) {

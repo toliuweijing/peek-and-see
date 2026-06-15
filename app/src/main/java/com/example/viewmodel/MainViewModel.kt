@@ -489,6 +489,115 @@ class MainViewModel(
         TimerServiceState.testAlarmStatus.value = "NOT_STARTED"
     }
 
+    // --- DATA SNAPSHOT (EXPORT / IMPORT) ---
+    private val _snapshotStatusMessage = MutableStateFlow<String?>(null)
+    val snapshotStatusMessage: StateFlow<String?> = _snapshotStatusMessage.asStateFlow()
+
+    fun clearSnapshotStatusMessage() {
+        _snapshotStatusMessage.value = null
+    }
+
+    fun exportSnapshot(uri: android.net.Uri, context: android.content.Context) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val routines = repository.getAllRoutinesSync()
+                val stages = repository.getAllStagesSync()
+                val sessions = repository.getAllSessionsSync()
+                val stageRecords = repository.getAllStageRecordsSync()
+                val profiles = _patientProfiles.value
+
+                val snapshot = AppSnapshot(routines, stages, sessions, stageRecords, profiles)
+
+                val moshi = com.squareup.moshi.Moshi.Builder().build()
+                val adapter = moshi.adapter(AppSnapshot::class.java)
+                val jsonString = adapter.toJson(snapshot)
+
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    java.util.zip.ZipOutputStream(os).use { zos ->
+                        val entry = java.util.zip.ZipEntry("lazyeyetimer_snapshot.json")
+                        zos.putNextEntry(entry)
+                        zos.write(jsonString.toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+                    }
+                }
+                
+                _snapshotStatusMessage.value = "Data exported successfully!"
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _snapshotStatusMessage.value = "Export failed: ${e.message}"
+            }
+        }
+    }
+
+    fun importSnapshot(uri: android.net.Uri, context: android.content.Context) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                var jsonString = ""
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    java.util.zip.ZipInputStream(inputStream).use { zis ->
+                        val entry = zis.nextEntry
+                        if (entry != null && entry.name.endsWith(".json")) {
+                            jsonString = zis.bufferedReader().use { it.readText() }
+                        }
+                    }
+                }
+
+                if (jsonString.isNotEmpty()) {
+                    val moshi = com.squareup.moshi.Moshi.Builder().build()
+                    val adapter = moshi.adapter(AppSnapshot::class.java)
+                    val snapshot = adapter.fromJson(jsonString)
+                    
+                    snapshot?.let { data ->
+                        // Wipe existing data and insert
+                        repository.importSnapshotData(data)
+                        
+                        // Import profiles
+                        val newIds = data.profiles.map { it.id }.toMutableList()
+                        if (newIds.isEmpty() && !newIds.contains("default")) {
+                            newIds.add("default")
+                        }
+                        saveProfileIdList(newIds)
+                        
+                        // Delete old profile prefs first to ensure clean state
+                        val oldIds = getProfileIdList()
+                        oldIds.forEach { deleteProfileSharedPreferences(it) }
+
+                        data.profiles.forEach { writeProfile(it) }
+                        
+                        // Set active
+                        if (newIds.isNotEmpty()) {
+                            _activeProfileId.value = newIds.first()
+                            sharedPrefs.edit().putString("active_patient_id", newIds.first()).apply()
+                        }
+                        loadProfilesFromPrefs()
+                        _snapshotStatusMessage.value = "Data imported successfully!"
+                    } ?: run {
+                        _snapshotStatusMessage.value = "Failed to parse snapshot data."
+                    }
+                } else {
+                    _snapshotStatusMessage.value = "No valid JSON found in ZIP."
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _snapshotStatusMessage.value = "Import failed: ${e.message}"
+            }
+        }
+    }
+    
+    private fun deleteProfileSharedPreferences(id: String) {
+        if (id == "default") return
+        sharedPrefs.edit().apply {
+            remove("profile_${id}_name")
+            remove("profile_${id}_age")
+            remove("profile_${id}_sex")
+            remove("profile_${id}_sound_pref")
+            remove("profile_${id}_eyepatch_pref")
+            remove("profile_${id}_doctor_contact")
+            apply()
+        }
+    }
+
+
     init {
         loadProfilesFromPrefs()
         checkReliabilityPermissions()

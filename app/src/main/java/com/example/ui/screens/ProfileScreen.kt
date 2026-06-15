@@ -52,7 +52,27 @@ fun ProfileScreen(
     var eyepatchPrefInput by remember(profileEyepatchPref) { mutableStateOf(profileEyepatchPref) }
     var doctorContactInput by remember(profileDoctorContact) { mutableStateOf(profileDoctorContact) }
 
+    val snapshotStatusMessage by viewModel.snapshotStatusMessage.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportSnapshot(uri, context)
+        }
+    }
+
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importSnapshot(uri, context)
+        }
+    }
+
     var saveConfirmationMessage by remember { mutableStateOf<String?>(null) }
+
 
     LaunchedEffect(nameInput, ageInput, sexInput, soundPrefInput, eyepatchPrefInput, doctorContactInput) {
         val age = ageInput.toIntOrNull() ?: 0
@@ -669,6 +689,85 @@ fun ProfileScreen(
             }
         }
 
+        // --- SNAPSHOT EXPORT / IMPORT SECTION ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = "Data Management Section Icon",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Data Management",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                Text(
+                    text = "Export a snapshot of all user profiles, routines, and training history as a secure ZIP file, or restore from a previously exported snapshot.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            viewModel.clearSnapshotStatusMessage()
+                            exportLauncher.launch("lazyeyetimer_backup.zip")
+                        },
+                        modifier = Modifier.weight(1f).testTag("export_snapshot_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Export")
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.clearSnapshotStatusMessage()
+                            importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                        modifier = Modifier.weight(1f).testTag("import_snapshot_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Import")
+                    }
+                }
+                
+                if (snapshotStatusMessage != null) {
+                    val isError = snapshotStatusMessage!!.contains("fail", ignoreCase = true)
+                    Text(
+                        text = snapshotStatusMessage!!,
+                        color = if (isError) MaterialTheme.colorScheme.error else Color(0xFF2E7D32),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp).testTag("snapshot_status_msg")
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
+
